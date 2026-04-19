@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "py/builtin.h"
+#include "py/objlist.h"
 #include "py/objmodule.h"
 
 #if MICROPY_PY_BUILTINS_HELP
@@ -79,7 +80,9 @@ static void mp_help_print_modules(void) {
     mp_obj_t list = mp_obj_new_list(0, NULL);
 
     mp_help_add_from_map(list, &mp_builtin_module_map);
+    #if MICROPY_HAVE_REGISTERED_EXTENSIBLE_MODULES
     mp_help_add_from_map(list, &mp_builtin_extensible_module_map);
+    #endif
 
     #if MICROPY_MODULE_FROZEN
     extern const char mp_frozen_names[];
@@ -135,7 +138,7 @@ static void mp_help_print_obj(const mp_obj_t obj) {
     // try to print something sensible about the given object
     mp_print_str(MP_PYTHON_PRINTER, "object ");
     mp_obj_print(obj, PRINT_STR);
-    mp_printf(MP_PYTHON_PRINTER, " is of type %q\n", type->name);
+    mp_printf(MP_PYTHON_PRINTER, " is of type %q\n", (qstr)type->name);
 
     mp_map_t *map = NULL;
     if (type == &mp_type_module) {
@@ -150,9 +153,8 @@ static void mp_help_print_obj(const mp_obj_t obj) {
     }
     if (map != NULL) {
         for (uint i = 0; i < map->alloc; i++) {
-            mp_obj_t key = map->table[i].key;
-            if (key != MP_OBJ_NULL) {
-                mp_help_print_info_about_object(key, map->table[i].value);
+            if (mp_map_slot_is_filled(map, i)) {
+                mp_help_print_info_about_object(map->table[i].key, map->table[i].value);
             }
         }
     }

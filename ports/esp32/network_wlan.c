@@ -37,11 +37,15 @@
 #include "py/runtime.h"
 #include "py/mphal.h"
 #include "extmod/modnetwork.h"
+#include "shared/netutils/netutils.h"
 #include "modnetwork.h"
 
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_psram.h"
+#if !CONFIG_ESP_HOSTED_ENABLED
+#include "esp_wifi_ap_get_sta_list.h"
+#endif
 
 #ifndef NO_QSTR
 #include "mdns.h"
@@ -78,6 +82,15 @@ static bool mdns_initialised = false;
 
 static uint8_t conf_wifi_sta_reconnects = 0;
 static uint8_t wifi_sta_reconnects;
+
+// The rules for this default are defined in the documentation of esp_wifi_set_protocol()
+// rather than in code, so we have to recreate them here.
+#if CONFIG_SOC_WIFI_HE_SUPPORT
+// Note: No Explicit support for 5GHz here, yet
+#define WIFI_PROTOCOL_DEFAULT (WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX)
+#else
+#define WIFI_PROTOCOL_DEFAULT (WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+#endif
 
 // This function is called by the system-event task and so runs in a different
 // thread to the main MicroPython task.  It must not raise any Python exceptions.
@@ -400,11 +413,28 @@ static mp_obj_t network_wlan_status(size_t n_args, const mp_obj_t *args) {
             require_if(args[0], ESP_IF_WIFI_AP);
             wifi_sta_list_t station_list;
             esp_exceptions(esp_wifi_ap_get_sta_list(&station_list));
-            wifi_sta_info_t *stations = (wifi_sta_info_t *)station_list.sta;
+            #if !CONFIG_ESP_HOSTED_ENABLED
+            wifi_sta_mac_ip_list_t mac_ip_list;
+            esp_exceptions(esp_wifi_ap_get_sta_list_with_ip(&station_list, &mac_ip_list));
+            #endif
             mp_obj_t list = mp_obj_new_list(0, NULL);
-            for (int i = 0; i < station_list.num; ++i) {
+            #if CONFIG_ESP_HOSTED_ENABLED
+            int count = station_list.num;
+            wifi_sta_info_t *source = (wifi_sta_info_t *)station_list.sta;
+            #else
+            int count = mac_ip_list.num;
+            esp_netif_pair_mac_ip_t *source = (esp_netif_pair_mac_ip_t *)mac_ip_list.sta;
+            #endif
+            for (int i = 0; i < count; ++i) {
+                #if CONFIG_ESP_HOSTED_ENABLED
                 mp_obj_tuple_t *t = mp_obj_new_tuple(1, NULL);
-                t->items[0] = mp_obj_new_bytes(stations[i].mac, sizeof(stations[i].mac));
+                #else
+                mp_obj_tuple_t *t = mp_obj_new_tuple(2, NULL);
+                #endif
+                t->items[0] = mp_obj_new_bytes(source[i].mac, sizeof(source[i].mac));
+                #if !CONFIG_ESP_HOSTED_ENABLED
+                t->items[1] = source[i].ip.addr != 0 ? netutils_format_ipv4_addr((uint8_t *)(&source[i].ip), NETUTILS_BIG) : mp_const_none;
+                #endif
                 mp_obj_list_append(list, t);
             }
             return list;
@@ -760,8 +790,18 @@ static const mp_rom_map_elem_t wlan_if_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_SEC_WPA3_ENT_192), MP_ROM_INT(WIFI_AUTH_WPA3_ENT_192) },
     { MP_ROM_QSTR(MP_QSTR_SEC_WPA3_EXT_PSK), MP_ROM_INT(WIFI_AUTH_WPA3_EXT_PSK) },
     { MP_ROM_QSTR(MP_QSTR_SEC_WPA3_EXT_PSK_MIXED_MODE), MP_ROM_INT(WIFI_AUTH_WPA3_EXT_PSK_MIXED_MODE) },
-    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0)
     { MP_ROM_QSTR(MP_QSTR_SEC_DPP), MP_ROM_INT(WIFI_AUTH_DPP) },
+    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+    { MP_ROM_QSTR(MP_QSTR_SEC_WPA3_ENT), MP_ROM_INT(WIFI_AUTH_WPA3_ENTERPRISE) },
+    { MP_ROM_QSTR(MP_QSTR_SEC_WPA2_WPA3_ENT), MP_ROM_INT(WIFI_AUTH_WPA2_WPA3_ENTERPRISE) },
+    #endif
+    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+    { MP_ROM_QSTR(MP_QSTR_SEC_WPA_ENT), MP_ROM_INT(WIFI_AUTH_WPA_ENTERPRISE) },
+    #endif
+
+    { MP_ROM_QSTR(MP_QSTR_PROTOCOL_DEFAULT), MP_ROM_INT(WIFI_PROTOCOL_DEFAULT) },
+    #if !CONFIG_IDF_TARGET_ESP32C2
+    { MP_ROM_QSTR(MP_QSTR_PROTOCOL_LR), MP_ROM_INT(WIFI_PROTOCOL_LR) },
     #endif
 
     { MP_ROM_QSTR(MP_QSTR_PM_NONE), MP_ROM_INT(WIFI_PS_NONE) },
@@ -770,10 +810,12 @@ static const mp_rom_map_elem_t wlan_if_locals_dict_table[] = {
 };
 static MP_DEFINE_CONST_DICT(wlan_if_locals_dict, wlan_if_locals_dict_table);
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0)
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+_Static_assert(WIFI_AUTH_MAX == 17, "Synchronize WIFI_AUTH_XXX constants with the ESP-IDF. Look at esp-idf/components/esp_wifi/include/esp_wifi_types_generic.h");
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+_Static_assert(WIFI_AUTH_MAX == 16, "Synchronize WIFI_AUTH_XXX constants with the ESP-IDF. Look at esp-idf/components/esp_wifi/include/esp_wifi_types_generic.h");
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0)
 _Static_assert(WIFI_AUTH_MAX == 14, "Synchronize WIFI_AUTH_XXX constants with the ESP-IDF. Look at esp-idf/components/esp_wifi/include/esp_wifi_types_generic.h");
-#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-_Static_assert(WIFI_AUTH_MAX == 13, "Synchronize WIFI_AUTH_XXX constants with the ESP-IDF. Look at esp-idf/components/esp_wifi/include/esp_wifi_types.h");
 #else
 #error "Error in macro logic, all supported versions should be covered."
 #endif

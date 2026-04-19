@@ -27,6 +27,29 @@ OBJ_EXTRA_ORDER_DEPS += $(HEADER_BUILD)/compressed.data.h
 CFLAGS += -DMICROPY_ROM_TEXT_COMPRESSION=1
 endif
 
+# Set the variant or board name.
+ifneq ($(VARIANT),)
+CFLAGS += -DMICROPY_BOARD_BUILD_NAME=\"$(VARIANT)\"
+else ifneq ($(BOARD),)
+ifeq ($(BOARD_VARIANT),)
+CFLAGS += -DMICROPY_BOARD_BUILD_NAME=\"$(BOARD)\"
+else
+CFLAGS += -DMICROPY_BOARD_BUILD_NAME=\"$(BOARD)-$(BOARD_VARIANT)\"
+endif
+endif
+
+# Add default C++ compiler flags based on CFLAGS. For use with C++ user modules.
+CXXFLAGS += $(filter-out -Wmissing-prototypes -Wold-style-definition -std=gnu99 -std=c99 -std=c11,$(CFLAGS) $(CXXFLAGS_MOD))
+
+# Add LDFLAGS to link libstdc++ on bare metal ports. Added only if a port has
+# -nostdlib in LDFLAGS and C++ source files are provided.
+ifneq ($(findstring nostdlib,"$(LDFLAGS)"),)
+ifneq ($(SRC_CXX)$(SRC_USERMOD_CXX)$(SRC_USERMOD_LIB_CXX),)
+LIBSTDCPP_FILE_NAME = "$(shell $(CXX) $(CXXFLAGS) -print-file-name=libstdc++.a)"
+LDFLAGS += -L"$(shell dirname $(LIBSTDCPP_FILE_NAME))"
+endif
+endif
+
 # QSTR generation uses the same CFLAGS, with these modifications.
 QSTR_GEN_FLAGS = -DNO_QSTR
 # Note: := to force evaluation immediately.
@@ -93,9 +116,13 @@ vpath %.cpp . $(TOP) $(USER_C_MODULES)
 $(BUILD)/%.o: %.cpp
 	$(call compile_cxx)
 
-$(BUILD)/%.pp: %.c
+$(BUILD)/%.pp: %.c FORCE
 	$(ECHO) "PreProcess $<"
 	$(Q)$(CPP) $(CFLAGS) -Wp,-C,-dD,-dI -o $@ $<
+
+.PHONY: $(BUILD)/%.sz
+$(BUILD)/%.sz: $(BUILD)/%.o
+	$(Q)$(SIZE) $<
 
 # Special case for compiling auto-generated source files.
 $(BUILD)/%.o: $(BUILD)/%.c
@@ -176,7 +203,7 @@ $(HEADER_BUILD):
 ifneq ($(MICROPY_MPYCROSS_DEPENDENCY),)
 # to automatically build mpy-cross, if needed
 $(MICROPY_MPYCROSS_DEPENDENCY):
-	$(MAKE) -C "$(abspath $(dir $@)..)"
+	$(MAKE) -C "$(abspath $(dir $@)..)" USER_C_MODULES=
 endif
 
 ifneq ($(FROZEN_DIR),)
@@ -248,14 +275,16 @@ clean-prog:
 .PHONY: clean-prog
 endif
 
+# If available, do blobless partial clones of submodules to save time and space.
+# A blobless partial clone lazily fetches data as needed, but has all the metadata available (tags, etc.).
+# Fallback to standard submodule update if blobless isn't available (earlier than 2.36.0)
+#
+# Note: This target has a CMake equivalent in py/mkrules.cmake
 submodules:
 	$(ECHO) "Updating submodules: $(GIT_SUBMODULES)"
 ifneq ($(GIT_SUBMODULES),)
 	$(Q)cd $(TOP) && git submodule sync $(GIT_SUBMODULES)
-	# If available, do blobless partial clones of submodules to save time and space.
-	# A blobless partial clone lazily fetches data as needed, but has all the metadata available (tags, etc.).
-	# Fallback to standard submodule update if blobless isn't available (earlier than 2.36.0)
-	$(Q)cd $(TOP) && git submodule update --init --filter=blob:none $(GIT_SUBMODULES) || \
+	$(Q)cd $(TOP) && git submodule update --init --filter=blob:none $(GIT_SUBMODULES) 2>/dev/null || \
 	  git submodule update --init $(GIT_SUBMODULES)
 endif
 .PHONY: submodules

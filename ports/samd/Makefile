@@ -13,7 +13,19 @@ ifeq ($(wildcard $(BOARD_DIR)/.),)
 $(error Invalid BOARD specified: $(BOARD_DIR))
 endif
 
+ifneq ($(BOARD_VARIANT),)
+ifeq ($(wildcard $(BOARD_DIR)/mpconfigvariant_$(BOARD_VARIANT).mk),)
+$(error Invalid BOARD_VARIANT specified: $(BOARD_VARIANT))
+endif
+endif
+
+# If the build directory is not given, make it reflect the board name (and
+# optionally the board variant).
+ifneq ($(BOARD_VARIANT),)
+BUILD ?= build-$(BOARD)-$(BOARD_VARIANT)
+else
 BUILD ?= build-$(BOARD)
+endif
 
 CROSS_COMPILE ?= arm-none-eabi-
 UF2CONV ?= $(TOP)/tools/uf2conv.py
@@ -21,7 +33,13 @@ UF2CONV ?= $(TOP)/tools/uf2conv.py
 MCU_SERIES_LOWER = $(shell echo $(MCU_SERIES) | tr '[:upper:]' '[:lower:]')
 
 include ../../py/mkenv.mk
+# Include board specific .mk file, and optional board variant .mk file.
 include $(BOARD_DIR)/mpconfigboard.mk
+ifeq ($(BOARD_VARIANT),)
+-include $(BOARD_DIR)/mpconfigvariant.mk
+else
+include $(BOARD_DIR)/mpconfigvariant_$(BOARD_VARIANT).mk
+endif
 include mcu/$(MCU_SERIES_LOWER)/mpconfigmcu.mk
 
 # Qstr definitions (must come before including py.mk)
@@ -64,7 +82,7 @@ AF_FILE = mcu/$(MCU_SERIES_LOWER)/pin-af-table.csv
 GEN_PINS_SRC = $(BUILD)/pins_$(BOARD).c
 GEN_PINS_HDR = $(HEADER_BUILD)/pins.h
 
-CFLAGS += $(INC) -Wall -Werror -std=c99 -nostdlib -mthumb $(CFLAGS_MCU) -fsingle-precision-constant -Wdouble-promotion
+CFLAGS += $(INC) -Wall -Werror -std=c99 -mthumb $(CFLAGS_MCU) -fsingle-precision-constant -Wdouble-promotion
 CFLAGS += -DMCU_$(MCU_SERIES) -D__$(CMSIS_MCU)__
 CFLAGS += $(CFLAGS_EXTRA)
 
@@ -72,7 +90,7 @@ CFLAGS += $(CFLAGS_EXTRA)
 CFLAGS += -DMICROPY_HW_CODESIZE=$(strip $(subst K,' ', $(MICROPY_HW_CODESIZE)))
 
 LDFLAGS += -nostdlib $(addprefix -T,$(LD_FILES)) -Map=$@.map --cref
-LDFLAGS += --defsym=_codesize=$(MICROPY_HW_CODESIZE)
+LDFLAGS += --defsym=_codesize=$(MICROPY_HW_CODESIZE) --defsym=_micropy_hw_romfs_part0_size=$(MICROPY_HW_ROMFS_BYTES)
 
 LIBS += $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
 
@@ -85,17 +103,10 @@ CFLAGS += -Os -DNDEBUG
 LDFLAGS += --gc-sections --print-memory-usage
 CFLAGS += -fdata-sections -ffunction-sections
 endif
-
-# Flags for optional C++ source code
-CXXFLAGS += $(filter-out -std=c99,$(CFLAGS))
-
-# TODO make this common -- shouldn't be using these "private" vars from py.mk
-ifneq ($(SRC_CXX)$(SRC_USERMOD_CXX)$(SRC_USERMOD_LIB_CXX),)
-LIBSTDCPP_FILE_NAME = "$(shell $(CXX) $(CXXFLAGS) -print-file-name=libstdc++.a)"
-LDFLAGS += -L"$(shell dirname $(LIBSTDCPP_FILE_NAME))"
+# Disable VFSROM support if the size was set to 0
+ifeq ($(MICROPY_HW_ROMFS_BYTES),0)
+	CFLAGS += -DMICROPY_VFS_ROM=0
 endif
-
-LDFLAGS += --wrap=dcd_event_handler
 
 MPY_CROSS_FLAGS += -march=$(MPY_CROSS_MCU_ARCH)
 

@@ -1,6 +1,7 @@
 # MicroPython Test Suite
 
-This directory contains tests for most parts of MicroPython.
+This directory contains tests for most parts of MicroPython.  To run it you will need
+CPython 3.8.2 or newer, which is used to validate MicroPython's behaviour.
 
 To run all stable tests, run the "run-tests.py" script in this directory.  By default
 that will run the test suite against the unix port of MicroPython.
@@ -13,7 +14,7 @@ target platform and run the appropriate set of tests for that platform.  For exa
 
 That will run tests on the `/dev/ttyACM0` serial port.  You can also use shortcut
 device names like `a<n>` for `/dev/ttyACM<n>` and `c<n>` for `COM<n>`.  Use
-`./run-tests.py --help` to see all of the device possibilites, and other options.
+`./run-tests.py --help` to see all of the device possibilities, and other options.
 
 There are three kinds of tests:
 
@@ -67,16 +68,14 @@ for a full list of command line options.
 
 ### Benchmarking a target
 
-To run tests on a firmware target using `pyboard.py`, run the command line like
+To run tests on a firmware target using a serial port, run the command line like
 this:
 
 ```
-./run-perfbench.py -p -d /dev/ttyACM0 168 100
+./run-perfbench.py -t /dev/ttyACM0 168 100
 ```
 
-* `-p` indicates running on a remote target via pyboard.py, not the host.
-* `-d PORTNAME` is the serial port, `/dev/ttyACM0` is the default if not
-  provided.
+* `-t PORTNAME` is the serial port to use (and it supports shorthand like `a0`).
 * `168` is value `N`, the approximate CPU frequency in MHz (in this case Pyboard
   V1.1 is 168MHz). It's possible to choose other values as well: lower values
   like `10` will run much the tests much quicker, higher values like `1000` will
@@ -136,11 +135,11 @@ Usually you want to know if something is faster or slower than a reference. To
 do this, copy the output of each `run-perfbench.py` run to a text file.
 
 This can be done multiple ways, but one way on Linux/macOS is with the `tee`
-utility: `./run-perfbench.py -p 168 100 | tee pyb-run1.txt`
+utility: `./run-perfbench.py -t a0 168 100 | tee pyb-run1.txt`
 
 Once you have two files with output from two different runs (maybe with
 different code or configuration), compare the runtimes with `./run-perfbench.py
--t pybv-run1.txt pybv-run2.txt` or compare scores with `./run-perfbench.py -s
+-m pybv-run1.txt pybv-run2.txt` or compare scores with `./run-perfbench.py -s
 pybv-run1.txt pybv-run2.txt`:
 
 ```
@@ -204,6 +203,18 @@ internal_bench/bytebuf:
 1 tests performed (3 individual testcases)
 ```
 
+## Serial reliability and performance test
+
+Serial port reliability and performance can be tested using the `serial_test.py` script.
+Pass the name of the port to test against, for example:
+
+    $ ./serial_test.py -t /dev/ttyACM0
+
+If no port is specified then `/dev/ttyACM0` is used as the default.
+
+The test will send data out to the target, and receive data from the target, in various
+chunk sizes.  The throughput of the serial connection will be reported for each sub-test.
+
 ## Test key/certificates
 
 SSL/TLS tests in `multi_net` and `net_inet` use self-signed key/cert pairs
@@ -222,7 +233,7 @@ need to be re-created by end users. This section is included here for reference 
 
 A new self-signed RSA key/cert pair can be created with openssl:
 ```
-$ openssl req -x509 -newkey rsa:2048 -keyout rsa_key.pem -out rsa_cert.pem -days 365 -nodes -subj '/CN=micropython.local/O=MicroPython/C=AU'
+$ openssl req -x509 -newkey rsa:2048 -keyout rsa_key.pem -out rsa_cert.pem -days 3650 -nodes -subj '/CN=micropython.local/O=MicroPython/C=AU'
 ```
 In this case CN is: micropython.local
 
@@ -235,6 +246,6 @@ $ openssl x509 -in rsa_cert.pem -out rsa_cert.der -outform DER
 For elliptic curve tests using key/cert pairs, create a key then a certificate using:
 ```
 $ openssl ecparam -name prime256v1 -genkey -noout -out ec_key.pem
-$ openssl x509 -in ec_key.pem -out ec_key.der -outform DER
-$ openssl req -new -x509 -key ec_key.pem -out ec_cert.der -outform DER -days 365 -nodes -subj '/CN=micropython.local/O=MicroPython/C=AU'
+$ openssl pkey -in ec_key.pem -out ec_key.der -outform DER
+$ openssl req -new -x509 -key ec_key.pem -out ec_cert.der -outform DER -days 3650 -nodes -subj '/CN=micropython.local/O=MicroPython/C=AU'
 ```

@@ -241,7 +241,9 @@ static void configure_flexpwm(machine_pwm_obj_t *self) {
             pwmConfig.pairOperation = kPWM_Independent;
         }
         pwmConfig.clockSource = kPWM_BusClock;
+        #if !defined(FSL_FEATURE_PWM_HAS_NO_WAITEN) || (!FSL_FEATURE_PWM_HAS_NO_WAITEN)
         pwmConfig.enableWait = false;
+        #endif
         pwmConfig.initializationControl = self->sync ? kPWM_Initialize_MasterSync : kPWM_Initialize_LocalSync;
 
         if (PWM_Init(self->instance, self->submodule, &pwmConfig) == kStatus_Fail) {
@@ -373,7 +375,7 @@ static void configure_pwm(machine_pwm_obj_t *self) {
     }
 }
 
-// Micropython API functions
+// MicroPython API functions
 //
 static void mp_machine_pwm_init_helper(machine_pwm_obj_t *self,
     size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {

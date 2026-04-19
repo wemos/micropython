@@ -26,6 +26,7 @@
 
 #include "py/runtime.h"
 #include "py/mphal.h"
+#include "extmod/modmachine.h"
 
 static struct k_poll_signal wait_signal;
 static struct k_poll_event wait_events[2] = {
@@ -51,7 +52,7 @@ void mp_hal_wait_sem(struct k_sem *sem, uint32_t timeout_ms) {
         k_poll_event_init(&wait_events[1], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, sem);
     }
     for (;;) {
-        mp_handle_pending(true);
+        mp_handle_pending(MP_HANDLE_PENDING_CALLBACKS_AND_EXCEPTIONS);
         MP_THREAD_GIL_EXIT();
         k_timeout_t wait;
         uint32_t dt = mp_hal_ticks_ms() - t0;
@@ -74,4 +75,11 @@ void mp_hal_wait_sem(struct k_sem *sem, uint32_t timeout_ms) {
             return;
         }
     }
+}
+
+mp_hal_pin_obj_t mp_hal_get_pin_obj(mp_obj_t pin_in) {
+    if (mp_obj_is_type(pin_in, &machine_pin_type)) {
+        return MP_OBJ_TO_PTR(pin_in);
+    }
+    mp_raise_ValueError(MP_ERROR_TEXT("invalid pin"));
 }

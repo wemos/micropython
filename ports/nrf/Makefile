@@ -129,14 +129,7 @@ CFLAGS_MCU_m4 = $(CFLAGS_CORTEX_M) -mtune=cortex-m4 -mcpu=cortex-m4 -mfpu=fpv4-s
 
 CFLAGS_MCU_m0 = $(CFLAGS_CORTEX_M) -fshort-enums -mtune=cortex-m0 -mcpu=cortex-m0 -mfloat-abi=soft
 
-# linker wrap does not work with lto on older gcc/binutils: https://sourceware.org/bugzilla/show_bug.cgi?id=24406
-GCC_VERSION = $(shell arm-none-eabi-gcc -dumpversion)
-GCC_MAJOR_VERS = $(word 1,$(subst ., ,$(GCC_VERSION)))
-ifeq ($(shell test $(GCC_MAJOR_VERS) -ge 10; echo $$?),0)
 LTO ?= 1
-else
-LTO ?= 0
-endif
 
 ifeq ($(LTO),1)
 CFLAGS += -flto
@@ -146,12 +139,12 @@ LDFLAGS += -Wl,--gc-sections
 endif
 
 CFLAGS += $(CFLAGS_MCU_$(MCU_SERIES))
-CFLAGS += $(INC) -Wall -Werror -ansi -std=c11 -nostdlib $(COPT) $(NRF_DEFINES) $(CFLAGS_EXTRA)
+CFLAGS += $(INC) -Wall -Werror -std=c11 $(COPT) $(NRF_DEFINES) $(CFLAGS_EXTRA)
 CFLAGS += -fno-strict-aliasing
 CFLAGS += -I$(BOARD_DIR)
 CFLAGS += -DNRF5_HAL_H='<$(MCU_VARIANT)_hal.h>'
 
-LDFLAGS += $(CFLAGS)
+LDFLAGS += $(CFLAGS) -nostdlib
 LDFLAGS += -Xlinker -Map=$(@:.elf=.map)
 LDFLAGS += -mthumb -mabi=aapcs $(addprefix -T,$(LD_FILES)) -L boards/
 
@@ -268,7 +261,6 @@ SRC_C += $(addprefix lib/tinyusb/src/,\
 	portable/nordic/nrf5x/dcd_nrf5x.c \
 	)
 
-LDFLAGS += -Wl,--wrap=dcd_event_handler
 endif
 
 DRIVERS_SRC_C += $(addprefix modules/,\

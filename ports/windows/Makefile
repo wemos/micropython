@@ -46,6 +46,10 @@ LDFLAGS += -lm -lbcrypt $(LDFLAGS_EXTRA)
 # This option has no effect on 64-bit builds.
 CFLAGS += -D_FILE_OFFSET_BITS=64
 
+# Force the use of 64-bits for time_t in C library functions on 32-bit platforms.
+# This option has no effect on 64-bit builds.
+CFLAGS += -D_TIME_BITS=64
+
 # Debugging/Optimization
 ifdef DEBUG
 CFLAGS += -g
@@ -79,6 +83,7 @@ OBJ += $(addprefix $(BUILD)/, $(LIB_SRC_C:.c=.o))
 ifeq ($(MICROPY_USE_READLINE),1)
 CFLAGS += -DMICROPY_USE_READLINE=1
 SRC_C += shared/readline/readline.c
+SRC_C += shared/runtime/pyexec.c
 endif
 
 LIB += -lws2_32
@@ -98,8 +103,6 @@ ifeq ($(shell $(CC) -dumpmachine),i686-w64-mingw32)
 # https://lemire.me/blog/2020/06/26/gcc-not-nearest
 CFLAGS += -msse -mfpmath=sse -march=pentium4
 endif
-
-CXXFLAGS += $(filter-out -std=gnu99,$(CFLAGS))
 
 include $(TOP)/py/mkrules.mk
 

@@ -122,10 +122,13 @@ See :ref:`machine.UART <machine.UART>`. ::
     uart1 = UART(1, baudrate=115200)
     uart1.write('hello')  # write 5 bytes
     uart1.read(5)         # read up to 5 bytes
+    uart1 = UART(baudrate=19200) # open UART 1 at 19200 baud
 
 The i.MXRT has up to eight hardware UARTs, but not every board exposes all
 TX and RX pins for users. For the assignment of Pins to UART signals,
-refer to the :ref:`UART pinout <mimxrt_uart_pinout>`.
+refer to the :ref:`UART pinout <mimxrt_uart_pinout>`. If the UART ID is
+omitted, UART(1) is selected. Then, the keyword
+option for baudrate must be used to change it from the default value.
 
 PWM (pulse width modulation)
 ----------------------------
@@ -305,12 +308,15 @@ rates (up to 30Mhz).  Hardware SPI is accessed via the
     cs_pin(0)
     spi.write('Hello World')
     cs_pin(1)
+    spi = SPI(baudrate=4_000_000)  # Use SPI(0) at a baudrate of 4 MHz
 
 For the assignment of Pins to SPI signals, refer to
 :ref:`Hardware SPI pinout <mimxrt_spi_pinout>`.
 The keyword option cs=n can be used to enable the cs pin 0 or 1 for an automatic cs signal. The
 default is cs=-1. Using cs=-1 the automatic cs signal is not created.
 In that case, cs has to be set by the script. Clearing that assignment requires a power cycle.
+If the SPI ID is omitted, SPI(0) is selected. Then, the keyword
+option for baudrate must be used to change it from the default value.
 
 Notes:
 
@@ -355,6 +361,10 @@ has the same methods as software SPI above::
 
     i2c = I2C(0, 400_000)
     i2c.writeto(0x76, b"Hello World")
+    i2c = I2C(freq=100_000)  # use I2C(0) at 100kHz
+
+If the I2C ID is omitted, I2C(0) is selected. Then, the keyword
+option for freq must be used to change the freq from the default value.
 
 I2S bus
 -------
@@ -429,7 +439,9 @@ See :ref:`machine.RTC <machine.RTC>`::
     from machine import RTC
 
     rtc = RTC()
-    rtc.datetime((2017, 8, 23, 1, 12, 48, 0, 0)) # set a specific date and time
+    rtc.datetime((2017, 8, 23, 0, 1, 12, 48, 0)) # set a specific date and
+                                                 # time, eg. 2017/8/23 1:12:48
+                                                 # the day-of-week value is ignored
     rtc.datetime() # get date and time
     rtc.now() # return date and time in CPython format.
 
@@ -543,6 +555,55 @@ equipped with two Ethernet ports, which are addressed as LAN(0) for the 100M
 port and LAN(1) for the 1G port.
 
 For details of the network interface refer to the class :ref:`network.LAN <network.LAN>`.
+
+class Counter -- Signal counter for i.MXRT MCUs
+-----------------------------------------------
+
+This class provides a Counter service using the Quadrature Encoder module
+
+Example usage::
+
+    # Samples for Teensy
+
+    from machine import Pin, Counter
+
+    counter = Counter(0, Pin("D0"))       # create Counter object
+    counter.value()                       # get current counter value
+    counter.value(0)                      # set the counter to 0
+    counter.init(max=128)                 # set the upper counting range
+    counter.deinit()                      # turn off the Counter
+    counter.init(match=1000)              # create a match event at count 1000
+    counter.irq(handler, Counter.IRQ_MATCH)  # call the function handler at a counter match
+    counter                               # show the Counter object properties
+
+The Counter is hardware based. It is available at all MIMXRT devices except the ones
+based on the i.MX RT 1010 MCU. For details about using the Counter with a MIMXRT board
+see :ref:`machine.Counter <machine.Counter>`:
+
+class Encoder -- Quadrature Encoder for i.MXRT MCUs
+---------------------------------------------------
+
+This class provides the Quadrature Encoder Service.
+
+Example usage::
+
+    # Samples for Teensy
+
+    from machine import Pin, Encoder
+
+    qe = Encoder(0, Pin("D0"), Pin("D1")) # create Quadrature Encoder object
+    qe.value()                      # get current counter values
+    qe.value(0)                     # set the counter value to 0
+    qe.init(max=128)                # specify 128 counts as upper range
+    qe.init(index=Pin("D3"))        # specify Pin 3 as Index pulse input
+    qe.deinit()                     # turn off the Quadrature Encoder
+    qe.init(match=64)               # set a match event at count 64
+    qe.irq(handler, qe.IRQ_MATCH)   # call the function handler at a match event
+    qe                              # show the Encoder object properties
+
+The Quadrature Encoder is hardware based. It is available at all MIMXRT devices except the ones
+based on the i.MX RT 1010 MCU. For details about using the Encoder with a MIMXRT board
+see :ref:`machine.Encoder <machine.Encoder>`:
 
 Transferring files
 ------------------
