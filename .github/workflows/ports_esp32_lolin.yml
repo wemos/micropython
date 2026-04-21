@@ -23,7 +23,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Install esp32 packages
-      run: source tools/ci.sh && ci_esp32_idf_setup
+      run: source tools/ci_old.sh && ci_esp32_idf_setup
     - name: Install gc9a01_mpy
       run: source tools/ci_lolin.sh && ci_gc9a01_mpy_setup
     - name: Install st7789_mpy
@@ -31,7 +31,7 @@ jobs:
     - name: Build LOLIN esp32 Boards
       run: source tools/ci_lolin.sh && ci_lolin_build
     - name: Install esp8266 packages
-      run: source tools/ci.sh && ci_esp8266_setup && ci_esp8266_path >> $GITHUB_PATH
+      run: source tools/ci_old.sh && ci_esp8266_setup && ci_esp8266_path >> $GITHUB_PATH
     - name: Build LOLIN esp8266 Boards
       run: source tools/ci_lolin.sh && ci_esp8266_build
     - name: Change firmware name
