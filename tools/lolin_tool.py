@@ -9,6 +9,16 @@ import os
 import re
 import subprocess
 
+import shutil
+from datetime import datetime
+import platform
+
+pc_name = platform.node()
+
+if(pc_name == "wemos"):
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_dir = f"firmware_{now}"
+    os.makedirs(target_dir, exist_ok=True)
 
 def get_version_from_git():
     git_tag = subprocess.check_output(
@@ -42,8 +52,13 @@ def main():
 
             if old_name != "":
                 os.rename(old_name, new_name)
-                print(old_name, " ---> ", new_name)
+                print("[MOVE]: ",old_name, " ---> ", new_name)
 
+                if(pc_name == "wemos"):
+                    file_name = os.path.basename(new_name)
+                    target_file = os.path.join(target_dir, file_name)
+                    shutil.copy2(new_name, target_file)
+                    print("[COPY]: ", new_name, " ---> ", target_file)
         except:
             pass
 
