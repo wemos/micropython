@@ -1,4 +1,4 @@
-#define MICROPY_HW_BOARD_NAME               "LOLIN S3 MINI PRO"
+#define MICROPY_HW_BOARD_NAME               "LOLIN S3 MINI PRO (GC9A01)"
 #define MICROPY_HW_MCU_NAME                 "ESP32S3"
 
 #define MICROPY_PY_MACHINE_DAC              (0)
