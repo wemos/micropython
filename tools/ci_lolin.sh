@@ -21,6 +21,7 @@ function ci_lolin_build {
     make ${MAKEOPTS} -C ports/esp32 BOARD=LOLIN_S3_PRO
     make ${MAKEOPTS} -C ports/esp32 BOARD=LOLIN_S3_MINI
     make ${MAKEOPTS} -C ports/esp32 BOARD=LOLIN_S3_MINI_PRO
+    make ${MAKEOPTS} -C ports/esp32 BOARD=LOLIN_S3_MINI_PRO_ST7789
     make ${MAKEOPTS} -C ports/esp32 BOARD=LOLIN_C5
 
 }
