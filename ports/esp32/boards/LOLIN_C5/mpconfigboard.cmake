@@ -1,11 +1,9 @@
-set(IDF_TARGET esp32c5)
+include(boards/mpconfigboard_esp32c5_common.cmake)
 
-set(SDKCONFIG_DEFAULTS
-    boards/sdkconfig.base
-    boards/sdkconfig.riscv
-    boards/sdkconfig.ble
-    boards/sdkconfig.240mhz
+list(APPEND SDKCONFIG_DEFAULTS
     boards/sdkconfig.free_ram
-    boards/sdkconfig.spiram_sx
-    boards/LOLIN_C5/sdkconfig.board
+    # boards/sdkconfig.spiram_quad
+    ${MICROPY_BOARD_DIR}/sdkconfig.board
 )
+
+set(MICROPY_FROZEN_MANIFEST ${MICROPY_BOARD_DIR}/manifest.py)

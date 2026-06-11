@@ -1,9 +1,6 @@
-set(IDF_TARGET esp32c3)
+include(boards/mpconfigboard_esp32c3_common.cmake)
 
-set(SDKCONFIG_DEFAULTS
-    boards/sdkconfig.base
-    boards/sdkconfig.ble
-    boards/LOLIN_C3_MINI/sdkconfig.board
-)
+list(APPEND SDKCONFIG_DEFAULTS
+    ${MICROPY_BOARD_DIR}/sdkconfig.board)
 
 set(MICROPY_FROZEN_MANIFEST ${MICROPY_BOARD_DIR}/manifest.py)
