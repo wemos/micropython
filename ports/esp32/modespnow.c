@@ -62,6 +62,16 @@
 #define MICROPY_PY_ESPNOW_EXTRA_PEER_METHODS 1
 #endif
 
+// Set maximum possible data length based on IDF version
+// TODO Delete this after dropping support for IDF < 5.4
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+#define ESP_NOW_MAX_POSSIBLE_DATA_LEN ESP_NOW_MAX_DATA_LEN_V2
+#else
+#define ESP_NOW_MAX_POSSIBLE_DATA_LEN ESP_NOW_MAX_DATA_LEN
+#endif
+
+#define MAX_DATA_LEN_V1 ESP_NOW_MAX_DATA_LEN
+
 // Relies on gcc Variadic Macros and Statement Expressions
 #define NEW_TUPLE(...) \
     ({mp_obj_t _z[] = {__VA_ARGS__}; mp_obj_new_tuple(MP_ARRAY_SIZE(_z), _z); })
@@ -72,7 +82,7 @@ static const uint8_t ESPNOW_MAGIC = 0x99;
 // Use this for peeking at the header of the next packet in the buffer.
 typedef struct {
     uint8_t magic;              // = ESPNOW_MAGIC
-    uint8_t msg_len;            // Length of the message
+    uint16_t msg_len;            // Length of the message
     #if MICROPY_PY_ESPNOW_RSSI
     uint32_t time_ms;           // Timestamp (ms) when packet is received
     int8_t rssi;                // RSSI value (dBm) (-127 to 0)
@@ -82,15 +92,16 @@ typedef struct {
 typedef struct {
     espnow_hdr_t hdr;           // The header
     uint8_t peer[6];            // Peer address
-    uint8_t msg[0];             // Message is up to 250 bytes
+    uint8_t msg[0];             // Message is up to 250 or 1470 bytes
 } __attribute__((packed)) espnow_pkt_t;
 
 // The maximum length of an espnow packet (bytes)
 static const size_t MAX_PACKET_LEN = (
-    (sizeof(espnow_pkt_t) + ESP_NOW_MAX_DATA_LEN));
+    (sizeof(espnow_pkt_t) + ESP_NOW_MAX_POSSIBLE_DATA_LEN));
 
-// Enough for 2 full-size packets: 2 * (6 + 7 + 250) = 526 bytes
-// Will allocate an additional 7 bytes for buffer overhead
+// Enough for 2 full-size packets:
+// V1.0: 2 * (6 + 8 + 250) = 528 bytes (keeping this default for compatibility)
+// V2.0: 2 * (6 + 8 + 1470) = 2972 bytes
 static const size_t DEFAULT_RECV_BUFFER_SIZE = (2 * MAX_PACKET_LEN);
 
 // Default timeout (millisec) to wait for incoming ESPNow messages (5 minutes).
@@ -224,6 +235,8 @@ mp_obj_t espnow_deinit(mp_obj_t _) {
         check_esp_err(esp_now_unregister_recv_cb());
         check_esp_err(esp_now_unregister_send_cb());
         check_esp_err(esp_now_deinit());
+        self->recv_cb = mp_const_none;
+        self->recv_cb_arg = mp_const_none;
         self->recv_buffer->buf = NULL;
         self->recv_buffer = NULL;
         self->peer_count = 0; // esp_now_deinit() removes all peers.
@@ -381,15 +394,16 @@ static uint8_t *_get_bytes_len(mp_obj_t obj, size_t len) {
     return _get_bytes_len_rw(obj, len, MP_BUFFER_READ);
 }
 
+#if !MICROPY_PY_ESPNOW_RSSI
 static uint8_t *_get_bytes_len_w(mp_obj_t obj, size_t len) {
     return _get_bytes_len_rw(obj, len, MP_BUFFER_WRITE);
 }
+#endif
 
 // Return C pointer to the MAC address.
-// Raise ValueError if mac_addr is wrong type or is not 6 bytes long.
+// Raise TypeError or ValueError if mac_addr is wrong type or is not 6 bytes long.
 static const uint8_t *_get_peer(mp_obj_t mac_addr) {
-    return mp_obj_is_true(mac_addr)
-        ? _get_bytes_len(mac_addr, ESP_NOW_ETH_ALEN) : NULL;
+    return _get_bytes_len(mac_addr, ESP_NOW_ETH_ALEN);
 }
 
 // Copy data from the ring buffer - wait if buffer is empty up to timeout_ms
@@ -412,7 +426,7 @@ static int ringbuf_get_bytes_wait(ringbuf_t *r, uint8_t *data, size_t len, mp_in
 // Arguments:
 //      buffers: (Optional) list of bytearrays to store return values.
 //      timeout_ms: (Optional) timeout in milliseconds (or None).
-// Buffers should be a list: [bytearray(6), bytearray(250)]
+// Buffers should be a list: [bytearray(6), bytearray(250 or 1470)]
 // If buffers is 4 elements long, the rssi and timestamp values will be
 // loaded into the 3rd and 4th elements.
 // Default timeout is set with ESPNow.config(timeout=milliseconds).
@@ -425,6 +439,7 @@ static mp_obj_t espnow_recvinto(size_t n_args, const mp_obj_t *args) {
 
     mp_obj_list_t *list = mp_obj_list_ensure(args[1], 2);
     mp_obj_array_t *msg = MP_OBJ_TO_PTR(list->items[1]);
+    mp_buffer_info_t msg_buf;
     if (mp_obj_is_type(msg, &mp_type_bytearray)) {
         msg->len += msg->free;   // Make all the space in msg array available
         msg->free = 0;
@@ -434,7 +449,8 @@ static mp_obj_t espnow_recvinto(size_t n_args, const mp_obj_t *args) {
     #else
     uint8_t *peer_buf = _get_bytes_len_w(list->items[0], ESP_NOW_ETH_ALEN);
     #endif // MICROPY_PY_ESPNOW_RSSI
-    uint8_t *msg_buf = _get_bytes_len_w(msg, ESP_NOW_MAX_DATA_LEN);
+
+    mp_get_buffer_raise(msg, &msg_buf, MP_BUFFER_WRITE);
 
     // Read the packet header from the incoming buffer
     espnow_hdr_t hdr;
@@ -443,11 +459,13 @@ static mp_obj_t espnow_recvinto(size_t n_args, const mp_obj_t *args) {
     }
     int msg_len = hdr.msg_len;
 
-    // Check the message packet header format and read the message data
+    // Check the message packet header format, check the message will fit in the buffer,
+    // and then read the message data
     if (hdr.magic != ESPNOW_MAGIC
-        || msg_len > ESP_NOW_MAX_DATA_LEN
+        || msg_len > msg_buf.len
         || ringbuf_get_bytes(self->recv_buffer, peer_buf, ESP_NOW_ETH_ALEN) < 0
-        || ringbuf_get_bytes(self->recv_buffer, msg_buf, msg_len) < 0) {
+        || ringbuf_get_bytes(self->recv_buffer, msg_buf.buf, msg_len) < 0) {
+        ringbuf_reset(self->recv_buffer); // Prevent ringbuffer getting out of sync
         mp_raise_ValueError(MP_ERROR_TEXT("ESPNow.recv(): buffer error"));
     }
     if (mp_obj_is_type(msg, &mp_type_bytearray)) {
@@ -510,7 +528,7 @@ static void _wait_for_pending_responses(esp_espnow_obj_t *self) {
 static mp_obj_t espnow_send(size_t n_args, const mp_obj_t *args) {
     esp_espnow_obj_t *self = _get_singleton_initialised();
     // Check the various combinations of input arguments
-    const uint8_t *peer = (n_args > 2) ? _get_peer(args[1]) : NULL;
+    const uint8_t *peer = (n_args > 2 && args[1] != mp_const_none) ? _get_peer(args[1]) : NULL;
     mp_obj_t msg = (n_args > 2) ? args[2] : (n_args == 2) ? args[1] : MP_OBJ_NULL;
     bool sync = n_args <= 3 || args[3] == mp_const_none || mp_obj_is_true(args[3]);
 
@@ -669,7 +687,7 @@ static void _update_peer_count() {
 //          [channel=1..11|0], [ifidx=0|1], [encrypt=True|False])
 // Positional args set to None will be left at defaults.
 // Raise OSError if ESPNow.init() has not been called.
-// Raise ValueError if mac or LMK are not bytes-like objects or wrong length.
+// Raise TypeError or ValueError if mac or LMK are not bytes-like objects or wrong length.
 // Raise TypeError if invalid keyword args or too many positional args.
 // Return None.
 static mp_obj_t espnow_add_peer(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
@@ -686,7 +704,7 @@ static MP_DEFINE_CONST_FUN_OBJ_KW(espnow_add_peer_obj, 2, espnow_add_peer);
 
 // ESPNow.del_peer(peer_mac): Unregister peer_mac.
 // Raise OSError if ESPNow.init() has not been called.
-// Raise ValueError if peer is not a bytes-like objects or wrong length.
+// Raise TypeError or ValueError if peer is not a bytes-like objects or wrong length.
 // Return None.
 static mp_obj_t espnow_del_peer(mp_obj_t _, mp_obj_t peer) {
     uint8_t peer_addr[ESP_NOW_ETH_ALEN];
@@ -734,7 +752,7 @@ static MP_DEFINE_CONST_FUN_OBJ_1(espnow_get_peers_obj, espnow_get_peers);
 #if MICROPY_PY_ESPNOW_EXTRA_PEER_METHODS
 // ESPNow.get_peer(peer_mac): Get the peer info for peer_mac as a tuple.
 // Raise OSError if ESPNow.init() has not been called.
-// Raise ValueError if mac or LMK are not bytes-like objects or wrong length.
+// Raise TypeError or ValueError if mac or LMK are not bytes-like objects or wrong length.
 // Return a tuple of (peer_addr, lmk, channel, ifidx, encrypt).
 static mp_obj_t espnow_get_peer(mp_obj_t _, mp_obj_t arg1) {
     esp_now_peer_info_t peer = {0};
@@ -751,7 +769,7 @@ static MP_DEFINE_CONST_FUN_OBJ_2(espnow_get_peer_obj, espnow_get_peer);
 //          [channel=1..11|0], [ifidx=0|1], [encrypt=True|False])
 // Positional args set to None will be left at current values.
 // Raise OSError if ESPNow.init() has not been called.
-// Raise ValueError if mac or LMK are not bytes-like objects or wrong length.
+// Raise TypeError or ValueError if mac or LMK are not bytes-like objects or wrong length.
 // Raise TypeError if invalid keyword args or too many positional args.
 // Return None.
 static mp_obj_t espnow_mod_peer(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
@@ -809,7 +827,7 @@ static MP_DEFINE_CONST_DICT(esp_espnow_locals_dict, esp_espnow_locals_dict_table
 static const mp_rom_map_elem_t espnow_globals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__espnow) },
     { MP_ROM_QSTR(MP_QSTR_ESPNowBase), MP_ROM_PTR(&esp_espnow_type) },
-    { MP_ROM_QSTR(MP_QSTR_MAX_DATA_LEN), MP_ROM_INT(ESP_NOW_MAX_DATA_LEN)},
+    { MP_ROM_QSTR(MP_QSTR_MAX_DATA_LEN), MP_ROM_INT(ESP_NOW_MAX_POSSIBLE_DATA_LEN)},
     { MP_ROM_QSTR(MP_QSTR_ADDR_LEN), MP_ROM_INT(ESP_NOW_ETH_ALEN)},
     { MP_ROM_QSTR(MP_QSTR_KEY_LEN), MP_ROM_INT(ESP_NOW_KEY_LEN)},
     { MP_ROM_QSTR(MP_QSTR_MAX_TOTAL_PEER_NUM), MP_ROM_INT(ESP_NOW_MAX_TOTAL_PEER_NUM)},

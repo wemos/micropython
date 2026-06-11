@@ -276,6 +276,28 @@ static mp_obj_t extra_coverage(void) {
 
         // calling gc_nbytes with a non-heap pointer
         mp_printf(&mp_plat_print, "%d\n", (int)gc_nbytes(NULL));
+
+        // test gc_info_fast
+        void *p0 = gc_alloc(4, 0);
+        void *p1 = gc_alloc(4, 0);
+        void *p2 = gc_alloc(4, 0);
+
+        // Create a hole
+        gc_free(p1);
+
+        gc_info_t info_slow;
+        gc_info_t info_fast;
+
+        gc_info(&info_slow);
+        gc_info_fast(&info_fast);
+
+        // Free allocs
+        gc_free(p0);
+        gc_free(p2);
+
+        // Should be equal
+        mp_printf(&mp_plat_print, "%d\n", info_slow.used == info_fast.used);
+        mp_printf(&mp_plat_print, "%d\n", info_slow.free == info_fast.free);
     }
 
     // GC initialisation and allocation stress test, to check the logic behind ALLOC_TABLE_GAP_BYTE
@@ -647,10 +669,10 @@ static mp_obj_t extra_coverage(void) {
         mp_printf(&mp_plat_print, "mp_obj_list_optional_arg same list? %d\n", MP_OBJ_TO_PTR(list) == as_ptr);
 
         as_ptr = mp_obj_list_optional_arg(mp_const_none, list_len);
-        mp_printf(&mp_plat_print, "mp_obj_list_optional_arg new list len %d\n", as_ptr->len);
+        mp_printf(&mp_plat_print, "mp_obj_list_optional_arg new list len " SIZE_FMT "\n", as_ptr->len);
 
         as_ptr = mp_obj_list_optional_arg(MP_OBJ_NULL, list_len);
-        mp_printf(&mp_plat_print, "mp_obj_list_optional_arg new list from NULL len %d\n", as_ptr->len);
+        mp_printf(&mp_plat_print, "mp_obj_list_optional_arg new list from NULL len " SIZE_FMT "\n", as_ptr->len);
     }
 
     // runtime utils
