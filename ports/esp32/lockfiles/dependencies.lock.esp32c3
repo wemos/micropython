@@ -12,11 +12,7 @@ dependencies:
   idf:
     source:
       type: idf
-<<<<<<< HEAD
-    version: 5.5.1
-=======
     version: 5.5.5
->>>>>>> upsteam/master
 direct_dependencies:
 - espressif/mdns
 - idf
