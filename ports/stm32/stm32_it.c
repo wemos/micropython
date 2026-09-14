@@ -678,7 +678,7 @@ void TIM1_UP_TIM16_IRQHandler(void) {
 }
 #endif
 
-#if defined(STM32H7)
+#if defined(STM32H7) || defined(STM32N6)
 void TIM1_UP_IRQHandler(void) {
     IRQ_ENTER(TIM1_UP_IRQn);
     timer_irq_handler(1);
@@ -1041,6 +1041,22 @@ void USART10_IRQHandler(void) {
     IRQ_ENTER(USART10_IRQn);
     uart_irq_handler(10);
     IRQ_EXIT(USART10_IRQn);
+}
+#endif
+
+#if defined(USART11)
+void USART11_IRQHandler(void) {
+    IRQ_ENTER(USART11_IRQn);
+    uart_irq_handler(11);
+    IRQ_EXIT(USART11_IRQn);
+}
+#endif
+
+#if defined(UART12)
+void UART12_IRQHandler(void) {
+    IRQ_ENTER(UART12_IRQn);
+    uart_irq_handler(12);
+    IRQ_EXIT(UART12_IRQn);
 }
 #endif
 

@@ -13,6 +13,7 @@ Example usage::
     rtc.datetime((2020, 1, 21, 2, 10, 32, 36, 0))
     print(rtc.datetime())
 
+Availability: **Alif, ESP32, ESP8266, MIMXRT, Renesas-RA, RP2, SAMD, STM32**
 
 Constructors
 ------------
@@ -101,6 +102,18 @@ Methods
    and 492 bytes on esp8266.
 
    Availability: esp32, esp8266 ports.
+
+   .. note::
+
+      For cross-port persistent storage, see :func:`machine.mem_backup`
+      which is available on more ports and provides direct memoryview access.
+
+   .. warning::
+
+      On esp32, ``RTC.memory()`` and :func:`machine.mem_backup` share the same
+      backing buffer but track length independently. Writes through one API
+      are not reflected in the length seen by the other. Avoid mixing the two
+      in the same application.
 
 Constants
 ---------

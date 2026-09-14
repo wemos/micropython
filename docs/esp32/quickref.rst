@@ -192,8 +192,18 @@ These are working configurations for LAN interfaces of some popular ESP32 boards
 
     # Espressif ESP32-Ethernet-Kit_A_V1.2
 
-    lan = network.LAN(id=0, mdc=Pin(23), mdio=Pin(18), power=Pin(5),
+    lan = network.LAN(id=0, mdc=machine.Pin(23), mdio=machine.Pin(18), power=machine.Pin(5),
                       phy_type=network.PHY_IP101, phy_addr=1)
+
+    # ESP32-WROOM-32UE with KSZ8863RLL (Integrated 3-Port 10/100 Managed Switch with PHYs)
+
+    lan = network.LAN(mdc=machine.Pin(23),  # connected to SCL_MDC pin of KSZ8863RLL
+                      mdio=machine.Pin(15),  # connected to SDA_MDIO pin of KSZ8863RLL
+                      power=machine.Pin(16),  # connected to RSTN pin of KSZ8863RLL
+                      phy_type=network.PHY_GENERIC,
+                      phy_addr=3,
+                      ref_clk_mode=machine.Pin.IN,
+                      ref_clk=machine.Pin(0))  # REF_CLK 50MHz from KSZ8863RLL
 
 
 .. _esp32_spi_ethernet:
@@ -284,8 +294,7 @@ with a timer ID of 0, 0 and 1, or from 0 to 3 (inclusive)::
     tim1 = Timer(1)
     tim1.init(period=2000, mode=Timer.PERIODIC, callback=lambda t:print(1))
 
-The period is in milliseconds. When using UART.IRQ_RXIDLE, timer 0 is needed for
-the IRQ_RXIDLE mechanism and must not be used otherwise.
+The period is in milliseconds.
 
 Timer callbacks are scheduled as soft interrupts on this port; hard
 callbacks are not implemented. Specifying ``hard=True`` will raise

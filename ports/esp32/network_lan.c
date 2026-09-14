@@ -45,6 +45,18 @@
 #include "modnetwork.h"
 #include "extmod/modnetwork.h"
 
+#ifndef NO_QSTR
+#include "mdns.h"
+#endif
+
+#if MICROPY_HW_ENABLE_MDNS_QUERIES || MICROPY_HW_ENABLE_MDNS_RESPONDER
+#if MICROPY_PY_NETWORK_WLAN
+extern bool mdns_initialised; // Defined in network_wlan.c
+#else
+static bool mdns_initialised = false;
+#endif
+#endif
+
 #if PHY_LAN867X_ENABLED
 #include "esp_eth_phy_lan867x.h"
 #endif
@@ -106,6 +118,16 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
             case IP_EVENT_ETH_GOT_IP:
                 eth_status = ETH_GOT_IP;
                 ESP_LOGI("ethernet", "Ethernet Got IP");
+                #if MICROPY_HW_ENABLE_MDNS_QUERIES || MICROPY_HW_ENABLE_MDNS_RESPONDER
+                if (!mdns_initialised) {
+                    mdns_init();
+                    #if MICROPY_HW_ENABLE_MDNS_RESPONDER
+                    mdns_hostname_set(mod_network_hostname_data);
+                    mdns_instance_name_set(mod_network_hostname_data);
+                    #endif
+                    mdns_initialised = true;
+                }
+                #endif
                 break;
             default:
                 break;
@@ -208,6 +230,9 @@ static mp_obj_t get_lan(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_ar
         #if PHY_GENERIC_ENABLED
         args[ARG_phy_type].u_int != PHY_GENERIC &&
         #endif
+        #if CONFIG_ETH_USE_OPENETH
+        args[ARG_phy_type].u_int != PHY_OPENETH &&
+        #endif
         #if CONFIG_ETH_USE_SPI_ETHERNET
         #if CONFIG_ETH_SPI_ETHERNET_KSZ8851SNL
         args[ARG_phy_type].u_int != PHY_KSZ8851SNL &&
@@ -294,6 +319,13 @@ static mp_obj_t get_lan(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_ar
             break;
         #endif
         #endif // CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32P4
+        #if CONFIG_ETH_USE_OPENETH
+        case PHY_OPENETH:
+            phy_config.autonego_timeout_ms = 100;
+            mac = esp_eth_mac_new_openeth(&mac_config);
+            self->phy = esp_eth_phy_new_dp83848(&phy_config);
+            break;
+        #endif
         #if CONFIG_ETH_USE_SPI_ETHERNET
         #if CONFIG_ETH_SPI_ETHERNET_KSZ8851SNL
         case PHY_KSZ8851SNL: {

@@ -50,6 +50,7 @@ Tier 2 ports:
   - alif
   - embed
   - nrf
+  - psoc-edge
   - renesas-ra
   - webassembly
   - zephyr
@@ -59,7 +60,6 @@ Tier 3 ports:
   - cc3200
   - esp8266
   - pic16bit
-  - powerpc
 
 Tier M ports:
 

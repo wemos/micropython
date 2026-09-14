@@ -82,10 +82,10 @@ $(BUILD):
 	$(MKDIR) -p $@
 
 $(BUILD)/M55_HP/firmware.bin:
-	$(MAKE) -f alif.mk BUILD=$(BUILD)/M55_HP MCU_CORE=M55_HP MICROPY_PY_OPENAMP_MODE=0
+	$(MAKE) -f alif.mk BUILD=$(BUILD)/M55_HP MCU_CORE=M55_HP MICROPY_PY_OPENAMP_MODE=0 BOARD=$(BOARD)
 
 $(BUILD)/M55_HE/firmware.bin:
-	$(MAKE) -f alif.mk BUILD=$(BUILD)/M55_HE MCU_CORE=M55_HE MICROPY_PY_OPENAMP_MODE=1
+	$(MAKE) -f alif.mk BUILD=$(BUILD)/M55_HE MCU_CORE=M55_HE MICROPY_PY_OPENAMP_MODE=1 BOARD=$(BOARD)
 
 $(BUILD)/$(ALIF_TOC_CONFIG): mcu/$(ALIF_TOC_CONFIG).in | $(BUILD)
 	$(ECHO) "Preprocess toc config $@"
@@ -93,7 +93,7 @@ $(BUILD)/$(ALIF_TOC_CONFIG): mcu/$(ALIF_TOC_CONFIG).in | $(BUILD)
 
 $(ALIF_TOC_BIN): $(ALIF_TOC_APPS)
 	$(Q)$(PYTHON) $(ALIF_TOOLS)/app-gen-toc.py \
-		--filename $(abspath $(BUILD)/$(ALIF_TOC_CONFIG)) \
+		--filename "$(abspath $(BUILD)/$(ALIF_TOC_CONFIG))" \
 		--output-dir $(BUILD) \
 		--firmware-dir $(BUILD) \
 		--output $@

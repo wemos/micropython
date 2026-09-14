@@ -54,11 +54,12 @@ If no command is specified, the default command is ``repl``. Additionally, if
 any command needs to access the device, and no earlier ``connect`` has been
 specified, then an implicit ``connect auto`` is added.
 
-In order to get the device into a known state for any action command
-(except ``repl``), once connected ``mpremote`` will stop any running program
-and soft-reset the device before running the first command. You can control
-this behavior using the ``resume`` and ``soft-reset`` commands.
-See :ref:`auto-connection and auto-soft-reset <mpremote_reset>` for more details.
+Once connected, ``mpremote`` will stop any running program before running an
+action command, but it will not clear the interpreter state.  Variables and
+imports therefore persist from one command to the next, and from one invocation
+of ``mpremote`` to the next.  Use the ``soft-reset`` command where a clean state
+is required.  See :ref:`auto-connection and soft-reset <mpremote_reset>` for
+more details.
 
 Multiple commands can be specified and they will be run sequentially.
 
@@ -66,7 +67,6 @@ The full list of supported commands are:
 
 - `connect <mpremote_command_connect>`
 - `disconnect <mpremote_command_disconnect>`
-- `resume <mpremote_command_resume>`
 - `soft_reset <mpremote_command_soft_reset>`
 - `repl <mpremote_command_repl>`
 - `eval <mpremote_command_eval>`
@@ -122,18 +122,8 @@ The full list of supported commands are:
 
       $ mpremote disconnect
 
-  After a disconnect, :ref:`auto-soft-reset <mpremote_reset>` is enabled.
-
-.. _mpremote_command_resume:
-
-- **resume** -- maintain existing interpreter state for subsequent commands:
-
-  .. code-block:: bash
-
-      $ mpremote resume
-
-  This disables :ref:`auto-soft-reset <mpremote_reset>`. This is useful if you
-  want to run a subsequent command on a board without first soft-resetting it.
+  A subsequent command will reconnect, keeping the interpreter state that was
+  on the device.
 
 .. _mpremote_command_soft_reset:
 
@@ -143,8 +133,7 @@ The full list of supported commands are:
 
       $ mpremote soft-reset
 
-  This will clear out the Python heap and restart the interpreter.  It also
-  prevents the subsequent command from triggering :ref:`auto-soft-reset <mpremote_reset>`.
+  This will clear out the Python heap and restart the interpreter.
 
 .. _mpremote_command_repl:
 
@@ -172,7 +161,7 @@ The full list of supported commands are:
   to access the Read Eval Print Loop that is running on the MicroPython
   device. Strictly, the ``repl`` command is just functioning as a terminal
   (or "serial monitor") to access the device. Because this command does not
-  trigger the :ref:`auto-reset behavior <mpremote_reset>`, this means that if
+  stop a running program, this means that if
   a program is currently running, you will first need to interrupt it with
   ``Ctrl-C`` to get to the REPL, which will then allow you to access program
   state. You can also use ``mpremote soft-reset repl`` to get a "clean" REPL
@@ -214,6 +203,12 @@ The full list of supported commands are:
   By default, ``mpremote run`` will display any output from the script until it
   terminates. The ``--no-follow`` flag can be specified to return immediately and leave
   the device running the script in the background.
+
+  **Note:** Only the contents of the local file are sent to the device; the
+  local filename has no special meaning, so passing a file called ``main.py``
+  is no different from any other name.  The script is executed in raw REPL
+  after a soft reset, so the device's own ``main.py`` is not run beforehand.
+  Any ``main.py`` already stored on the device filesystem is left untouched.
 
 .. _mpremote_command_fs:
 
@@ -376,28 +371,13 @@ The full list of supported commands are:
   This happens automatically when ``mpremote`` terminates, but it can be used
   in a sequence to unmount an earlier mount before subsequent command are run.
 
-.. _mpremote_command_romfs:
-
 - **romfs** -- manage ROMFS partitions on the device:
 
   .. code-block:: bash
 
       $ mpremote romfs <sub-command>
 
-  ``<sub-command>`` may be:
-
-  - ``romfs query`` to list all the available ROMFS partitions and their size
-  - ``romfs [-o <output>] build <source>`` to create a ROMFS image from the given
-    source directory; the default output file is the source appended by ``.romfs``
-  - ``romfs [-p <partition>] deploy <source>`` to deploy a ROMFS image to the device;
-    will also create a temporary ROMFS image if the source is a directory
-
-  The ``build`` and ``deploy`` sub-commands both support the ``-m``/``--mpy`` option
-  to automatically compile ``.py`` files to ``.mpy`` when creating the ROMFS image.
-  This option is enabled by default, but only works if the ``mpy_cross`` Python
-  package has been installed (eg via ``pip install mpy_cross``).  If the package is
-  not installed then a warning is printed and ``.py`` files remain as is.  Compiling
-  of ``.py`` files can be disabled with the ``--no-mpy`` option.
+  See :ref:`mpremote ROMFS commands <mpremote_command_romfs>` for details.
 
 .. _mpremote_command_rtc:
 
@@ -448,6 +428,107 @@ The full list of supported commands are:
   This will make the device enter its bootloader. The bootloader is port- and
   board-specific (e.g. DFU on stm32, UF2 on rp2040/Pico).
 
+.. _mpremote_command_romfs:
+
+ROMFS commands
+--------------
+
+The ``romfs`` command provides three sub-commands for managing ROMFS images on
+a connected device.
+
+.. _mpremote_command_romfs_query:
+
+mpremote romfs query
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    $ mpremote romfs query
+
+Lists all available ROMFS partitions on the device and their sizes.  Also
+shows the first 12 bytes of each partition in hex and reports whether a
+valid ROMFS image is present.
+
+Example output::
+
+    ROMFS0 partition has size 131072 bytes (32 blocks of 4096 bytes each)
+      Raw contents: d2:cd:31:XX:XX:XX:XX:XX:XX:XX:XX:XX ...
+      ROMFS image size: 1234
+
+.. _mpremote_command_romfs_build:
+
+mpremote romfs build
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    $ mpremote romfs [-o <output>] build <source>
+
+Build a ROMFS image from the directory *source* on the host PC.  The image
+is written to *output* (default: ``<source>.romfs``).
+
+Options:
+
+- ``-o <output>``, ``--output <output>``: Specify the output file path.
+- ``-m``, ``--mpy`` (default): Automatically compile ``.py`` files to
+  ``.mpy`` using ``mpy_cross`` before adding them to the image.  This requires
+  the ``mpy_cross`` Python package (``pip install mpy_cross``); without it,
+  ``mpremote`` prints a warning and leaves the ``.py`` files unchanged.
+- ``--no-mpy``: Disable automatic compilation of ``.py`` files.
+
+Example::
+
+    $ mpremote romfs build myapp/
+    Building romfs filesystem, source directory: myapp/
+    /
+    |-- main.py -> .mpy
+    \-- lib/
+        \-- helper.py -> .mpy
+    Writing 2048 bytes to output file myapp.romfs
+
+.. _mpremote_command_romfs_deploy:
+
+mpremote romfs deploy
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    $ mpremote romfs [-p <partition>] deploy <source>
+
+Deploy a ROMFS image to the device.  *source* can be either:
+
+- A directory on the host: the ROMFS image is built in memory and deployed
+  directly.
+- A ``.romfs`` or ``.img`` file: the image is read from disk and deployed.
+
+Options:
+
+- ``-p <partition>``, ``--partition <partition>``: Specify the target
+  partition index (default: ``0``).
+- ``-m``, ``--mpy`` (default): Compile ``.py`` to ``.mpy`` when *source*
+  is a directory.  If ``mpy_cross`` is not installed, ``mpremote`` prints a
+  warning and leaves the ``.py`` files unchanged.
+- ``--no-mpy``: Disable automatic compilation of ``.py`` files.
+
+After deployment, the device must be soft-reset for the new ROMFS to be
+mounted at ``/rom``.
+
+Example::
+
+    $ mpremote romfs deploy myapp/
+    Building romfs filesystem, source directory: myapp/
+    /
+    |-- main.py -> .mpy
+    \-- lib/
+        \-- helper.py -> .mpy
+    Image size is 2048 bytes
+    ROMFS0 partition has size 131072 bytes (32 blocks of 4096 bytes each)
+    Preparing ROMFS0 partition for writing
+    Deploying ROMFS to ROMFS0 partition
+    ROMFS image deployed
+
+    $ mpremote soft-reset
+
 .. _mpremote_reset:
 
 Auto connection and soft-reset
@@ -457,18 +538,30 @@ Connection and disconnection will be done automatically at the start and end of
 the execution of the tool, if such commands are not explicitly given.  Automatic
 connection will search for the first available USB serial device.
 
-Once connected to a device, ``mpremote`` will automatically soft-reset the
-device if needed.  This clears the Python heap and restarts the interpreter,
-making sure that subsequent Python code executes in a fresh environment.  Auto
-soft-reset is performed the first time one of the following commands are
-executed: ``mount``, ``eval``, ``exec``, ``run``, ``fs``.  After doing a
-soft-reset for the first time, it will not be done again automatically, until a
-``disconnect`` command is issued.
+``mpremote`` does not soft-reset the device on its own.  An action command such
+as ``mount``, ``eval``, ``exec``, ``run`` or ``fs`` will interrupt a running
+program, but the Python heap is left alone, so variables and imported modules
+set up by an earlier command are still there.  This also holds across a
+``disconnect``, and across separate invocations of ``mpremote``.
 
-Auto-soft-reset behaviour can be controlled by the ``resume`` command. This
-might be useful to use the ``eval`` command to inspect the state of of the
-device.  The ``soft-reset`` command can be used to perform an explicit soft
-reset in the middle of a sequence of commands.
+Use the ``soft-reset`` command to clear the Python heap and restart the
+interpreter, either at the start of a sequence of commands or partway through
+it.  Note that a soft-reset drops the connection on some devices, such as those
+using a dynamic ``USBDevice`` or WebREPL, which is why it is left to the user to
+ask for.
+
+The old behaviour of soft-resetting on connection can be turned back on by
+setting ``auto_soft_reset`` in the :ref:`user configuration file
+<mpremote_shortcuts>`:
+
+.. code-block:: python3
+
+    auto_soft_reset = True
+
+With that set, ``mpremote`` soft-resets the device the first time a command
+needs the device, and again after each ``disconnect``.  The ``resume`` command
+skips that soft-reset for a single invocation, and is otherwise accepted but
+does nothing.
 
 .. _mpremote_shortcuts:
 
@@ -495,6 +588,14 @@ This is typically:
 - ``$XDG_CONFIG_HOME/mpremote/config.py``
 - ``$HOME/.config/mpremote/config.py``
 - ``$env:LOCALAPPDATA/mpremote/config.py``
+
+The ``config.py`` file may set ``auto_soft_reset`` to control whether
+``mpremote`` soft-resets the device on connection, see
+:ref:`auto connection and soft-reset <mpremote_reset>`:
+
+.. code-block:: python3
+
+  auto_soft_reset = True
 
 The ``config.py``` file should define a dictionary named ``commands``. The keys of this dictionary are the shortcuts
 and the values are either a string or a list-of-strings:
@@ -604,11 +705,11 @@ device at ``/dev/ttyACM1``, printing each result.
 
 .. code-block:: bash
 
-  mpremote resume exec "print_state_info()" soft-reset
+  mpremote exec "print_state_info()" soft-reset
 
-Connect to the device without triggering a :ref:`soft reset <soft_reset>` and
-execute the ``print_state_info()`` function (e.g. to find out information about
-the current program state), then trigger a soft reset.
+Execute the ``print_state_info()`` function against the state already on the
+device (e.g. to find out information about the current program state), then
+trigger a :ref:`soft reset <soft_reset>`.
 
 .. code-block:: bash
 

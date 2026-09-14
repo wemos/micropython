@@ -167,6 +167,7 @@ still fully supported:
 | [alif](ports/alif)               | Alif Semiconductor Ensemble MCUs (E3, E7)                   |                                                                         |
 | [embed](ports/embed)             | Generates a set of .c/.h files for embedding into a project |                                                                         |
 | [nrf](ports/nrf)                 | Nordic Semiconductor nRF51 and nRF52                        |                                                                         |
+| [psoc-edge](ports/psoc-edge)     | Infineon PSOC™ Edge                                         | [here](https://docs.micropython.org/en/latest/psoc-edge/quickref.html)  |
 | [renesas-ra](ports/renesas-ra)   | Renesas RA family                                           | [here](https://docs.micropython.org/en/latest/renesas-ra/quickref.html) |
 | [webassembly](ports/webassembly) | Emscripten port targeting browsers and NodeJS               |                                                                         |
 | [zephyr](ports/zephyr)           | Zephyr RTOS                                                 | [here](https://docs.micropython.org/en/latest/zephyr/quickref.html)     |
@@ -182,7 +183,6 @@ are built in CI but not regularly tested by the MicroPython maintainers:
 | [cc3200](ports/cc3200)     | Texas Instruments CC3200                                          | [For WiPy](https://docs.micropython.org/en/latest/wipy/quickref.html)   |
 | [esp8266](ports/esp8266)   | Espressif ESP8266 SoC                                             | [here](https://docs.micropython.org/en/latest/esp8266/quickref.html)    |
 | [pic16bit](ports/pic16bit) | Microchip PIC 16-bit                                              |                                                                         |
-| [powerpc](ports/powerpc)   | IBM PowerPC (including Microwatt)                                 |                                                                         |
 
 Additional Ports
 ================
@@ -200,7 +200,7 @@ primarily for maintenance, development and testing:
   to another microcontroller.
 
 - The [qemu](ports/qemu) port is a QEMU-based emulated target for Cortex-A,
-  Cortex-M, RISC-V 32-bit and RISC-V 64-bit architectures.
+  Cortex-M, RISC-V 32-bit, RISC-V 64-bit, and PowerPC 64-bit architectures.
 
 The MicroPython cross-compiler, mpy-cross
 -----------------------------------------

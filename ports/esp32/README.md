@@ -5,7 +5,7 @@ This is a port of MicroPython to the Espressif ESP32 series of
 microcontrollers.  It uses the ESP-IDF framework and MicroPython runs as
 a task under FreeRTOS.
 
-Currently supports ESP32, ESP32-C2 (aka ESP8684), ESP32-C3, ESP32-C5, ESP32-C6,
+Currently supports ESP32, ESP32-C2 (aka ESP8684), ESP32-C3, ESP32-C5, ESP32-C6, ESP32-H2,
 ESP32-P4, ESP32-S2 and ESP32-S3. ESP8266 is supported by a separate MicroPython port.
 
 Supported features include:
@@ -52,8 +52,8 @@ manage the ESP32 microcontroller, as well as a way to manage the required
 build environment and toolchains needed to build the firmware.
 
 The ESP-IDF changes quickly and MicroPython only supports certain versions. The
-current recommended version of ESP-IDF for MicroPython is v5.5.2. MicroPython
-also supports v5.3, v5.4, v5.4.1, v5.4.2, v5.5.1 and v5.5.4.
+current recommended version of ESP-IDF for MicroPython is v5.5.5. MicroPython
+also supports v5.3, v5.4, v5.4.1, v5.4.2, v5.5.1, v5.5.2 and v5.5.4.
 
 <!-- Important: If updating the above, please also update:
      * IDF_OLDEST_VER & IDF_NEWEST_VER in .github/workflows/port_esp32.yml

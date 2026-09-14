@@ -146,6 +146,9 @@
 #define MICROPY_PY_MACHINE_I2C_TARGET_INCLUDEFILE "ports/esp32/machine_i2c_target.c"
 #define MICROPY_PY_MACHINE_I2C_TARGET_MAX   (2)
 #endif
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 2) && !defined(MICROPY_HW_ESP_NEW_I2C_DRIVER)
+#define MICROPY_HW_ESP_NEW_I2C_DRIVER       (1)
+#endif
 #define MICROPY_PY_MACHINE_SOFTI2C          (1)
 #define MICROPY_PY_MACHINE_SPI              (1)
 #define MICROPY_PY_MACHINE_SOFTSPI          (1)
@@ -165,6 +168,18 @@
 #define MICROPY_PY_MACHINE_UART_IRQ         (1)
 #define MICROPY_PY_MACHINE_WDT              (1)
 #define MICROPY_PY_MACHINE_WDT_INCLUDEFILE  "ports/esp32/machine_wdt.c"
+#ifndef MICROPY_HW_RTC_USER_MEM_MAX
+#define MICROPY_HW_RTC_USER_MEM_MAX         2048
+#endif
+// machine.mem_backup exposes the RTC user memory as a byte memoryview.
+// RTC.memory() coexists but uses separate length tracking; writes via
+// mem_backup won't update RTC.memory()'s length, and vice versa.
+#if MICROPY_HW_RTC_USER_MEM_MAX > 0
+#ifndef MICROPY_PY_MACHINE_MEM_BACKUP
+#define MICROPY_PY_MACHINE_MEM_BACKUP    (1)
+#endif
+#define MICROPY_PY_MACHINE_MEM_BACKUP_INCLUDEFILE "ports/esp32/machine_mem_backup.c"
+#endif
 #ifndef MICROPY_PY_NETWORK
 #define MICROPY_PY_NETWORK (1)
 #endif
@@ -183,6 +198,8 @@
 #define MICROPY_PY_NETWORK_HOSTNAME_DEFAULT "mpy-esp32c5"
 #elif CONFIG_IDF_TARGET_ESP32C6
 #define MICROPY_PY_NETWORK_HOSTNAME_DEFAULT "mpy-esp32c6"
+#elif CONFIG_IDF_TARGET_ESP32H2
+#define MICROPY_PY_NETWORK_HOSTNAME_DEFAULT "mpy-esp32h2"
 #elif CONFIG_IDF_TARGET_ESP32P4
 #define MICROPY_PY_NETWORK_HOSTNAME_DEFAULT "mpy-esp32p4"
 #endif
@@ -192,21 +209,23 @@
 #ifndef MICROPY_PY_NETWORK_WLAN
 #define MICROPY_PY_NETWORK_WLAN             (1)
 #endif
+#ifndef MICROPY_PY_MACHINE_SDCARD
+#define MICROPY_PY_MACHINE_SDCARD           (1)
+#endif
+#ifndef MICROPY_PY_NETWORK_WLAN_CSI
+#define MICROPY_PY_NETWORK_WLAN_CSI         (CONFIG_ESP_WIFI_CSI_ENABLED)
+#endif
+#if MICROPY_PY_NETWORK_WLAN_CSI
+// CSI_DEFAULT_BUFFER_SIZE is used in network_wlan_csi.c
+#ifndef MICROPY_PY_NETWORK_WLAN_CSI_DEFAULT_BUFFER_SIZE
+#define MICROPY_PY_NETWORK_WLAN_CSI_DEFAULT_BUFFER_SIZE (16)
+#endif
+#endif
 #ifndef MICROPY_HW_ENABLE_SDCARD
 #define MICROPY_HW_ENABLE_SDCARD            (1)
 #endif
-#ifndef MICROPY_HW_SDMMC_DEFAULT_SLOT
-#if CONFIG_IDF_TARGET_ESP32P4
-#define MICROPY_HW_SDMMC_DEFAULT_SLOT       (0)
-#else
-#define MICROPY_HW_SDMMC_DEFAULT_SLOT       (1)
-#endif
-#endif
 #define MICROPY_HW_SOFTSPI_MIN_DELAY        (0)
 #define MICROPY_HW_SOFTSPI_MAX_BAUDRATE     (esp_rom_get_cpu_ticks_per_us() * 1000000 / 200) // roughly
-#ifndef MICROPY_HW_ESP_NEW_I2C_DRIVER
-#define MICROPY_HW_ESP_NEW_I2C_DRIVER       (0)
-#endif
 #define MICROPY_PY_SSL                      (MICROPY_PY_NETWORK)
 #define MICROPY_SSL_MBEDTLS                 (MICROPY_PY_SSL)
 #define MICROPY_PY_WEBSOCKET                (MICROPY_PY_NETWORK)
@@ -390,6 +409,10 @@ typedef long mp_off_t;
 
 #ifndef MICROPY_BOARD_STARTUP
 #define MICROPY_BOARD_STARTUP boardctrl_startup
+#endif
+
+#ifndef MICROPY_BOARD_FROZEN_BOOT_FILE
+#define MICROPY_BOARD_FROZEN_BOOT_FILE "_boot.py"
 #endif
 
 void boardctrl_startup(void);

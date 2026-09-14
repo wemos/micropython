@@ -116,6 +116,9 @@ to a constant e.g. ``0x100``, ``1 << 8`` or ``(True, "string", b"bytes")``
 (see section below for details).  It can even include other const
 symbols that have already been defined, e.g. ``1 << BIT``.
 
+See :func:`micropython.const` for complete documentation including scope
+requirements, import syntax, and other important limitations.
+
 **Constant data structures**
 
 Where there is a substantial volume of constant data and the platform supports
@@ -251,7 +254,26 @@ instances so the process of eliminating Unicode can be painless.
     b = b'the quick brown fox'  # A bytes instance
 
 Where it is necessary to convert between strings and bytes the :meth:`str.encode`
-and the :meth:`bytes.decode` methods can be used. Note that both strings and bytes
+and the :meth:`bytes.decode` methods can be used. MicroPython validates the
+encoding parameter and only supports UTF-8 and ASCII. The :meth:`bytes.decode`
+method also supports error handlers (``'ignore'`` and ``'replace'``) for handling
+invalid UTF-8, when enabled in the build configuration.
+
+For memory-conscious applications processing untrusted data, using the ``'ignore'``
+error handler can be more efficient than ``'strict'`` mode (the default), as it
+avoids raising exceptions while still recovering valid text::
+
+    # Strict mode (default) raises an error on invalid UTF-8
+    try:
+        s = data.decode('utf-8')
+    except UnicodeError:
+        # Handle error
+        pass
+
+    # Ignore mode skips invalid bytes (more memory-efficient)
+    s = data.decode('utf-8', 'ignore')
+
+Note that both strings and bytes
 are immutable. Any operation which takes as input such an object and produces
 another implies at least one RAM allocation to produce the result. In the
 second line below a new bytes object is allocated. This would also occur if ``foo``

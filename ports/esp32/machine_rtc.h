@@ -56,4 +56,7 @@ typedef struct {
 
 extern machine_rtc_config_t machine_rtc_config;
 
+// User backup memory buffer, shared with machine.mem_backup on esp32.
+extern uint8_t rtc_user_mem_data[MICROPY_HW_RTC_USER_MEM_MAX];
+
 #endif

@@ -62,13 +62,6 @@ static int mp_vfs_blockdev_call_rw(mp_obj_t *args, size_t block_num, size_t bloc
     if (ret == mp_const_none) {
         return 0;
     } else {
-        // Some block devices return a bool indicating success, so
-        // convert those to an errno integer code.
-        if (ret == mp_const_true) {
-            return 0;
-        } else if (ret == mp_const_false) {
-            return -MP_EIO;
-        }
         // Block device functions are expected to return 0 on success
         // and negative integer on errors. Check for positive integer
         // results as some callers (i.e. littlefs) will produce corrupt
@@ -79,12 +72,14 @@ static int mp_vfs_blockdev_call_rw(mp_obj_t *args, size_t block_num, size_t bloc
 }
 
 int mp_vfs_blockdev_read(mp_vfs_blockdev_t *self, size_t block_num, size_t num_blocks, uint8_t *buf) {
+    #if MICROPY_VFS_BLOCKDEV_NATIVE
     if (self->flags & MP_BLOCKDEV_FLAG_NATIVE) {
-        mp_uint_t (*f)(uint8_t *, uint32_t, uint32_t) = (void *)(uintptr_t)self->readblocks[2];
+        mp_vfs_blockdev_native_readblocks f = (void *)(uintptr_t)self->readblocks[2];
         return f(buf, block_num, num_blocks);
-    } else {
-        return mp_vfs_blockdev_call_rw(self->readblocks, block_num, 0, num_blocks * self->block_size, buf, 2);
     }
+    #endif
+
+    return mp_vfs_blockdev_call_rw(self->readblocks, block_num, 0, num_blocks * self->block_size, buf, 2);
 }
 
 int mp_vfs_blockdev_read_ext(mp_vfs_blockdev_t *self, size_t block_num, size_t block_off, size_t len, uint8_t *buf) {
@@ -97,12 +92,14 @@ int mp_vfs_blockdev_write(mp_vfs_blockdev_t *self, size_t block_num, size_t num_
         return -MP_EROFS;
     }
 
+    #if MICROPY_VFS_BLOCKDEV_NATIVE
     if (self->flags & MP_BLOCKDEV_FLAG_NATIVE) {
-        mp_uint_t (*f)(const uint8_t *, uint32_t, uint32_t) = (void *)(uintptr_t)self->writeblocks[2];
+        mp_vfs_blockdev_native_writeblocks f = (void *)(uintptr_t)self->writeblocks[2];
         return f(buf, block_num, num_blocks);
-    } else {
-        return mp_vfs_blockdev_call_rw(self->writeblocks, block_num, 0, num_blocks * self->block_size, (void *)buf, 2);
     }
+    #endif
+
+    return mp_vfs_blockdev_call_rw(self->writeblocks, block_num, 0, num_blocks * self->block_size, (void *)buf, 2);
 }
 
 int mp_vfs_blockdev_write_ext(mp_vfs_blockdev_t *self, size_t block_num, size_t block_off, size_t len, const uint8_t *buf) {

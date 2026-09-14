@@ -372,6 +372,10 @@ HAL_SRC_C += $(addprefix $(STM32LIB_HAL_BASE)/Src/stm32$(MCU_SERIES)xx_,\
 	hal_pcd_ex.c \
 	ll_usb.c \
 	)
+ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),f4 f7))
+# HAL F4-1.16.0 and F7-1.7.0 have an unused debug variable in USB_ActivateDedicatedEndpoint.
+$(BUILD)/$(STM32LIB_HAL_BASE)/Src/stm32$(MCU_SERIES)xx_ll_usb.o: CFLAGS += -Wno-error=unused-but-set-variable
+endif
 endif
 
 ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),n6))
@@ -421,7 +425,7 @@ endif
 
 ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),f0 f4 f7))
 HAL_SRC_C += $(addprefix $(STM32LIB_HAL_BASE)/Src/stm32$(MCU_SERIES)xx_, hal_can.c)
-else ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),g0 g4 h7))
+else ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),g0 g4 h7 n6))
 HAL_SRC_C += $(addprefix $(STM32LIB_HAL_BASE)/Src/stm32$(MCU_SERIES)xx_, hal_fdcan.c)
 else ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),l4))
 HAL_SRC_C += $(addprefix $(STM32LIB_HAL_BASE)/Src/Legacy/stm32$(MCU_SERIES)xx_, hal_can.c)
@@ -464,6 +468,7 @@ USBDEV_SRC_C += $(addprefix $(USBDEV_DIR)/,\
 TINYUSB_SRC_C := $(sort $(addprefix lib/tinyusb/, \
 	$(TINYUSB_SRC_C) \
 	src/portable/st/stm32_fsdev/dcd_stm32_fsdev.c \
+	src/portable/st/stm32_fsdev/fsdev_common.c \
 	src/portable/synopsys/dwc2/dcd_dwc2.c \
 	src/portable/synopsys/dwc2/dwc2_common.c \
 	src/portable/synopsys/dwc2/hcd_dwc2.c \
@@ -669,7 +674,7 @@ $(BUILD)/firmware.elf: $(OBJ)
 
 $(BUILD)/firmware-trusted.bin: $(BUILD)/firmware.bin
 	/bin/rm -f $@
-	$(STM32_CUBE_PROGRAMMER)/bin/STM32_SigningTool_CLI -bin $^ -nk -of 0x80000000 -t fsbl -o $@ -hv $(STM32_N6_HEADER_VERSION)
+	$(STM32_CUBE_PROGRAMMER)/bin/STM32_SigningTool_CLI -bin $^ -nk -of 0x80000000 -t fsbl -o $@ -hv $(STM32_N6_HEADER_VERSION) --align
 
 # List of sources for qstr extraction
 SRC_QSTR += $(SRC_C) $(SRC_CXX) $(SHARED_SRC_C) $(GEN_PINS_SRC)

@@ -40,12 +40,6 @@
 #include "modmachine.h"
 #include "machine_rtc.h"
 
-#if MICROPY_HW_ENABLE_SDCARD
-#define MICROPY_PY_MACHINE_SDCARD_ENTRY { MP_ROM_QSTR(MP_QSTR_SDCard), MP_ROM_PTR(&machine_sdcard_type) },
-#else
-#define MICROPY_PY_MACHINE_SDCARD_ENTRY
-#endif
-
 #if SOC_TOUCH_SENSOR_SUPPORTED
 #define MICROPY_PY_MACHINE_TOUCH_PAD_ENTRY { MP_ROM_QSTR(MP_QSTR_TouchPad), MP_ROM_PTR(&machine_touchpad_type) },
 #else
@@ -56,7 +50,6 @@
     { MP_ROM_QSTR(MP_QSTR_sleep), MP_ROM_PTR(&machine_lightsleep_obj) }, \
     \
     { MP_ROM_QSTR(MP_QSTR_Timer), MP_ROM_PTR(&machine_timer_type) }, \
-    MICROPY_PY_MACHINE_SDCARD_ENTRY \
     { MP_ROM_QSTR(MP_QSTR_Pin), MP_ROM_PTR(&machine_pin_type) }, \
     MICROPY_PY_MACHINE_TOUCH_PAD_ENTRY \
     { MP_ROM_QSTR(MP_QSTR_RTC), MP_ROM_PTR(&machine_rtc_type) }, \
@@ -106,13 +99,18 @@ static void mp_machine_set_freq(size_t n_args, const mp_obj_t *args) {
         mp_raise_ValueError(MP_ERROR_TEXT("frequency must be 80MHz or 120MHz"));
     }
     #else
-    if (freq != 20 && freq != 40 && freq != 80 && freq != 160
-        #if !(CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6)
+    if (freq != 20 && freq != 40 && freq != 80
+        #if !(CONFIG_IDF_TARGET_ESP32H2)
+        && freq != 160
+        #endif
+        #if !(CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2)
         && freq != 240
         #endif
         ) {
         #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6
         mp_raise_ValueError(MP_ERROR_TEXT("frequency must be 20MHz, 40MHz, 80Mhz or 160MHz"));
+        #elif CONFIG_IDF_TARGET_ESP32H2
+        mp_raise_ValueError(MP_ERROR_TEXT("frequency must be 20MHz, 40MHz or 80Mhz"));
         #else
         mp_raise_ValueError(MP_ERROR_TEXT("frequency must be 20MHz, 40MHz, 80Mhz, 160MHz or 240MHz"));
         #endif
@@ -274,7 +272,7 @@ static mp_int_t mp_machine_reset_cause(void) {
 #include "esp32s3/rom/usb/chip_usb_dw_wrapper.h"
 #endif
 
-MP_NORETURN static void machine_bootloader_rtc(void) {
+MP_NORETURN void machine_bootloader_rtc(void) {
     #if CONFIG_IDF_TARGET_ESP32S3 && MICROPY_HW_USB_CDC
     usb_usj_mode();
     usb_dc_prepare_persist();
@@ -328,9 +326,7 @@ static mp_obj_t machine_wake_pins(void) {
 
     // Only a few (~8) pins might cause wakeup.
     // Therefore, we calculate the required space in a first pass.
-    for (index = 0, len = 0; index < 64; index++) {
-        len += (status & (1ULL << index)) ? 1 : 0;
-    }
+    len = mp_popcount(status >> 32) + mp_popcount(status & 0xFFFFFFFF);
     if (len) {
         mp_obj_tuple_t *tuple = MP_OBJ_TO_PTR(mp_obj_new_tuple(len, NULL));
 

@@ -36,7 +36,7 @@
 // CYW43 is connected to SPI3.
 #define HW_SPI_UNIT (3)
 #define HW_SPI ((SPI_Type *)SPI3_BASE)
-#define SPI_BAUDRATE (16000000)
+#define SPI_BAUDRATE (32000000)
 #define SPI_RX_FIFO_SIZE (16)
 
 // WL_IRQ is on P9_6.
@@ -44,12 +44,20 @@
 #define WL_IRQ_HANDLER GPIO9_IRQ6Handler
 
 // Must run at IRQ priority above PendSV so it can wake cyw43-driver when PendSV is disabled.
+// WL_IRQ is low-level triggered.  Mask the handler here while the event is processed, and unmask it in cyw43_post_poll_hook().
 void WL_IRQ_HANDLER(void) {
     if (gpio_read_int_rawstatus(pin_WL_IRQ->gpio, pin_WL_IRQ->pin)) {
+        gpio_mask_interrupt(pin_WL_IRQ->gpio, pin_WL_IRQ->pin);
         gpio_interrupt_eoi(pin_WL_IRQ->gpio, pin_WL_IRQ->pin);
         pendsv_schedule_dispatch(PENDSV_DISPATCH_CYW43, cyw43_poll);
         __SEV();
     }
+}
+
+// Called by cyw43-driver at the end of every cyw43_poll (CYW43_POST_POLL_HOOK).
+void cyw43_post_poll_hook(void) {
+    gpio_interrupt_eoi(pin_WL_IRQ->gpio, pin_WL_IRQ->pin);
+    gpio_unmask_interrupt(pin_WL_IRQ->gpio, pin_WL_IRQ->pin);
 }
 
 static void spi_bus_init(void) {
@@ -67,6 +75,9 @@ static void spi_bus_init(void) {
     // Starts out clock_polarity=1, clock_phase=0.
     spi_mode_master(HW_SPI);
     spi_set_bus_speed(HW_SPI, SPI_BAUDRATE, GetSystemAHBClock());
+    // Above 16MHz the MISO round-trip (chip output delay plus trace) exceeds
+    // the default sample point; delay RX sampling to compensate.
+    spi_set_rx_sample_delay(HW_SPI, 2);
     spi_set_mode(HW_SPI, SPI_MODE_2);
     spi_set_protocol(HW_SPI, SPI_PROTO_SPI);
     spi_set_dfs(HW_SPI, 8);
