@@ -64,6 +64,9 @@
 #include "modesp32.h"
 #include "modmachine.h"
 #include "modnetwork.h"
+#if MICROPY_PY_NETWORK_WLAN_CSI
+#include "network_wlan_csi.h"
+#endif
 
 #if MICROPY_BLUETOOTH_NIMBLE
 #include "extmod/modbluetooth.h"
@@ -147,8 +150,11 @@ soft_reset:
     machine_i2s_init0();
     #endif
 
-    // run boot-up scripts
-    pyexec_frozen_module("_boot.py", false);
+    // Run optional frozen boot code.
+    #ifdef MICROPY_BOARD_FROZEN_BOOT_FILE
+    pyexec_frozen_module(MICROPY_BOARD_FROZEN_BOOT_FILE, false);
+    #endif
+
     int ret = pyexec_file_if_exists("boot.py");
 
     #if MICROPY_HW_ENABLE_USBDEV
@@ -190,12 +196,13 @@ soft_reset_exit:
     MP_STATE_PORT(espnow_singleton) = NULL;
     #endif
 
-    // Deinit uart before timers, as esp32 uart
-    // depends on a timer instance
+    #if MICROPY_PY_NETWORK_WLAN_CSI
+    wifi_csi_deinit();
+    #endif
+
     #if MICROPY_PY_MACHINE_UART
     machine_uart_deinit_all();
     #endif
-    machine_timer_deinit_all();
 
     #if MICROPY_PY_ESP32_PCNT
     esp32_pcnt_deinit_all();
@@ -224,6 +231,9 @@ soft_reset_exit:
     machine_pins_deinit();
     #if MICROPY_PY_MACHINE_I2C_TARGET
     mp_machine_i2c_target_deinit_all();
+    #endif
+    #if SOC_GP_LDO_SUPPORTED
+    esp32_ldo_deinit_all();
     #endif
     machine_deinit();
 
@@ -316,4 +326,15 @@ void *esp_native_code_commit(void *buf, size_t len, void *reloc) {
     }
     memcpy(p, buf, len);
     return p;
+}
+
+
+// Workaround for https://github.com/espressif/esp-insights/issues/38
+extern int  __real_esp_efuse_rtc_calib_get_ver(void);
+int __wrap_esp_efuse_rtc_calib_get_ver(void) {
+    #if CONFIG_ETH_USE_OPENETH // detect QEMU build
+    return 1;
+    #else
+    return __real_esp_efuse_rtc_calib_get_ver();
+    #endif
 }

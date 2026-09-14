@@ -24,6 +24,8 @@ errors.
 .. note:: The planned ``can`` and ``aiocan`` micropython-lib modules will be the
           recommended way to use CAN with MicroPython.
 
+Availability: **STM32, MIMXRT, Alif**
+
 Constructor
 -----------
 
@@ -366,6 +368,10 @@ Methods
 
   .. note:: If a controller doesn't support a particular counter, it will return
             ``None`` for that list element.
+
+  .. note:: The **Alif** and **MIMXRT** ports cannot report the exact
+            number of pending RX messages. They will report a
+            number > 0, if messages are pending.
 
 .. method:: CAN.get_timings(list=None /)
 

@@ -59,6 +59,7 @@ extern uint8_t __StackTop, __StackLimit;
 extern uint8_t __GcHeapStart, __GcHeapEnd;
 extern void machine_pwm_deinit_all(void);
 extern void machine_pin_irq_deinit(void);
+extern void machine_can_deinit_all(void);
 
 MP_NORETURN void panic(const char *msg) {
     mp_hal_stdout_tx_strn("\nFATAL ERROR:\n", 14);
@@ -81,6 +82,7 @@ int main(void) {
     MICROPY_BOARD_EARLY_INIT();
 
     lptimer_init();
+    machine_init();
     machine_rtc_init();
 
     #if MICROPY_HW_ENABLE_UART_REPL
@@ -172,9 +174,13 @@ int main(void) {
         #if MICROPY_PY_MACHINE_I2C_TARGET
         mp_machine_i2c_target_deinit_all();
         #endif
+        #if MICROPY_PY_MACHINE_CAN
+        machine_can_deinit_all();
+        #endif
         soft_timer_deinit();
         machine_pwm_deinit_all();
         machine_pin_irq_deinit();
+        machine_set_soft_reset();
         gc_sweep_all();
         mp_deinit();
     }
@@ -196,7 +202,7 @@ void nlr_jump_fail(void *val) {
 
 #ifndef NDEBUG
 void MP_WEAK __assert_func(const char *file, int line, const char *func, const char *expr) {
-    printf("Assertion '%s' failed, at file %s:%d\n", expr, file, line);
+    mp_printf(&mp_plat_print, "Assertion '%s' failed, at file %s:%d\n", expr, file, line);
     panic("Assertion failed");
 }
 #endif

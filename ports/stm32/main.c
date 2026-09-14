@@ -420,6 +420,7 @@ void stm32_main(uint32_t reset_mode) {
 
     // Enable some APB peripherals during sleep.
     LL_APB1_GRP1_EnableClockLowPower(LL_APB1_GRP1_PERIPH_ALL); // I2C, I3C, LPTIM, SPI, TIM, UART, WWDG
+    LL_APB1_GRP2_EnableClockLowPower(LL_APB1_GRP2_PERIPH_FDCAN); // FDCAN
     LL_APB2_GRP1_EnableClockLowPower(LL_APB2_GRP1_PERIPH_ALL); // SAI, SPI, TIM, UART
     LL_APB4_GRP1_EnableClockLowPower(LL_APB4_GRP1_PERIPH_ALL); // I2C, LPTIM, LPUART, RTC, SPI
     #endif
@@ -500,6 +501,11 @@ void stm32_main(uint32_t reset_mode) {
     #if MICROPY_HW_ENABLE_RTC
     rtc_init_start(false);
     #endif
+
+    #if MICROPY_PY_MACHINE_MEM_BACKUP
+    machine_mem_backup_init();
+    #endif
+
     uart_init0();
 
     #if defined(MICROPY_HW_UART_REPL)

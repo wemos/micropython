@@ -29,9 +29,10 @@
 #include "py/runtime.h"
 #include "py/mphal.h"
 #include "py/mperrno.h"
+#include "extmod/modmachine.h"
 #include "extmod/vfs_fat.h"
 
-#if MICROPY_HW_ENABLE_SDCARD
+#if MICROPY_PY_MACHINE_SDCARD
 
 #if SOC_SDMMC_HOST_SUPPORTED
 #include "driver/sdmmc_host.h"
@@ -42,6 +43,8 @@
 #include "driver/sdspi_host.h"
 #include "sdmmc_cmd.h"
 #include "esp_log.h"
+
+#include "machine_sdcard.h"
 
 #define DEBUG 0
 #if DEBUG
@@ -56,9 +59,6 @@
 // Cards gets initialised by ioctl op==1 and de-inited by ioctl 2
 // Hosts are de-inited in __del__. Slots do not need de-initing.
 //
-
-// Forward declaration
-const mp_obj_type_t machine_sdcard_type;
 
 typedef struct _sdcard_obj_t {
     mp_obj_base_t base;
@@ -90,19 +90,10 @@ typedef struct _sdcard_obj_t {
 
 static const spi_bus_config_t spi_bus_defaults[NUM_SD_SPI_BUS] = {
     {
-        #if CONFIG_IDF_TARGET_ESP32
-        .miso_io_num = GPIO_NUM_19,
-        .mosi_io_num = GPIO_NUM_23,
-        .sclk_io_num = GPIO_NUM_18,
-        #elif CONFIG_IDF_TARGET_ESP32S3
-        .miso_io_num = GPIO_NUM_36,
-        .mosi_io_num = GPIO_NUM_35,
-        .sclk_io_num = GPIO_NUM_37,
-        #else
-        .miso_io_num = GPIO_NUM_NC,
-        .mosi_io_num = GPIO_NUM_NC,
-        .sclk_io_num = GPIO_NUM_NC,
-        #endif
+        // Primary SPI SD bus (slot 2): board-configurable via machine_sdcard.h.
+        .miso_io_num = MICROPY_HW_SDCARD_SPI_MISO,
+        .mosi_io_num = MICROPY_HW_SDCARD_SPI_MOSI,
+        .sclk_io_num = MICROPY_HW_SDCARD_SPI_SCK,
         .data2_io_num = GPIO_NUM_NC,
         .data3_io_num = GPIO_NUM_NC,
         .data4_io_num = GPIO_NUM_NC,
@@ -141,16 +132,14 @@ static const uint8_t spi_dma_channel_defaults[NUM_SD_SPI_BUS] = {
 static const sdspi_device_config_t spi_dev_defaults[NUM_SD_SPI_BUS] = {
     #if NUM_SD_SPI_BUS > 1
     {
+        // Primary SPI SD bus (slot 2): CS is board-configurable via
+        // machine_sdcard.h; host_id stays chip-specific.
         #if CONFIG_IDF_TARGET_ESP32
         .host_id = VSPI_HOST,
-        .gpio_cs = GPIO_NUM_5,
-        #elif CONFIG_IDF_TARGET_ESP32S3
-        .host_id = SPI3_HOST,
-        .gpio_cs = GPIO_NUM_34,
         #else
         .host_id = SPI3_HOST,
-        .gpio_cs = GPIO_NUM_NC,
         #endif
+        .gpio_cs = MICROPY_HW_SDCARD_SPI_CS,
         .gpio_cd = SDSPI_SLOT_NO_CD,
         .gpio_wp = SDSPI_SLOT_NO_WP,
         .gpio_int = SDSPI_SLOT_NO_INT,
@@ -219,14 +208,14 @@ static mp_obj_t machine_sdcard_make_new(const mp_obj_type_t *type, size_t n_args
         #endif
         ARG_freq,
     };
-    #if SOC_SDMMC_HOST_SUPPORTED
-    static const int DEFAULT_SLOT = MICROPY_HW_SDMMC_DEFAULT_SLOT;
-    #else
-    static const int DEFAULT_SLOT = SD_SLOT_MAX;
-    #endif
     static const mp_arg_t allowed_args[] = {
-        { MP_QSTR_slot,     MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = DEFAULT_SLOT} },
+        #if SOC_SDMMC_HOST_SUPPORTED
+        { MP_QSTR_slot,     MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = MICROPY_HW_SDMMC_DEFAULT_SLOT} },
+        { MP_QSTR_width,    MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = MICROPY_HW_SDMMC_DEFAULT_WIDTH} },
+        #else
+        { MP_QSTR_slot,     MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = SD_SLOT_MAX} },
         { MP_QSTR_width,    MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 1} },
+        #endif
         { MP_QSTR_cd,       MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
         { MP_QSTR_wp,       MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
         // These are only needed if using SPI mode
@@ -354,6 +343,16 @@ static mp_obj_t machine_sdcard_make_new(const mp_obj_type_t *type, size_t n_args
         #endif
         sdspi_device_config_t dev_config = spi_dev_defaults[slot_num];
 
+        #if NUM_SD_SPI_BUS == 1
+        // Single-bus chips use SDSPI_DEVICE_CONFIG_DEFAULT() for the only SPI SD
+        // bus (slot 2), which hard-codes its CS pin. If a board provides a
+        // default CS, apply it instead (keeping the IDF default otherwise). An
+        // explicit cs= argument still takes precedence below.
+        if (MICROPY_HW_SDCARD_SPI_CS != GPIO_NUM_NC) {
+            dev_config.gpio_cs = MICROPY_HW_SDCARD_SPI_CS;
+        }
+        #endif
+
         SET_CONFIG_PIN(bus_config, miso_io_num, ARG_miso);
         SET_CONFIG_PIN(bus_config, mosi_io_num, ARG_mosi);
         SET_CONFIG_PIN(bus_config, sclk_io_num, ARG_sck);
@@ -408,7 +407,27 @@ static mp_obj_t machine_sdcard_make_new(const mp_obj_type_t *type, size_t n_args
         }
 
         #if SOC_SDMMC_USE_GPIO_MATRIX
-        // Optionally configure all the SDMMC pins, if chip supports this
+        // Apply board-level pin defaults (mpconfigboard.h), then let an explicit
+        // clk/cmd/data argument override below. Grouped by bus width and nested
+        // so each wider mode builds on the narrower one: CLK/CMD/D0 (1-bit), then
+        // D1-D3 (4-bit), then D4-D7 (8-bit eMMC). An unset group stays at the
+        // driver default (GPIO_NUM_NC).
+        if (MICROPY_HW_SDMMC_CLK != GPIO_NUM_NC) {
+            slot_config.clk = MICROPY_HW_SDMMC_CLK;
+            slot_config.cmd = MICROPY_HW_SDMMC_CMD;
+            slot_config.d0 = MICROPY_HW_SDMMC_D0;
+            if (MICROPY_HW_SDMMC_D1 != GPIO_NUM_NC) {
+                slot_config.d1 = MICROPY_HW_SDMMC_D1;
+                slot_config.d2 = MICROPY_HW_SDMMC_D2;
+                slot_config.d3 = MICROPY_HW_SDMMC_D3;
+                if (MICROPY_HW_SDMMC_D4 != GPIO_NUM_NC) {
+                    slot_config.d4 = MICROPY_HW_SDMMC_D4;
+                    slot_config.d5 = MICROPY_HW_SDMMC_D5;
+                    slot_config.d6 = MICROPY_HW_SDMMC_D6;
+                    slot_config.d7 = MICROPY_HW_SDMMC_D7;
+                }
+            }
+        }
         SET_CONFIG_PIN(slot_config, clk, ARG_sck); // reuse SPI SCK for CLK
         SET_CONFIG_PIN(slot_config, cmd, ARG_cmd);
         if (arg_vals[ARG_data].u_obj != mp_const_none) {
@@ -502,7 +521,8 @@ static mp_obj_t machine_sdcard_readblocks(mp_obj_t self_in, mp_obj_t block_num, 
     mp_get_buffer_raise(buf, &bufinfo, MP_BUFFER_WRITE);
     err = sdmmc_read_sectors(&(self->card), bufinfo.buf, mp_obj_get_int(block_num), bufinfo.len / _SECTOR_SIZE(self));
 
-    return mp_obj_new_bool(err == ESP_OK);
+    int ret = err == ESP_OK ? 0 : -MP_EIO;
+    return MP_OBJ_NEW_SMALL_INT(ret);
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(machine_sdcard_readblocks_obj, machine_sdcard_readblocks);
 
@@ -519,7 +539,8 @@ static mp_obj_t machine_sdcard_writeblocks(mp_obj_t self_in, mp_obj_t block_num,
     mp_get_buffer_raise(buf, &bufinfo, MP_BUFFER_READ);
     err = sdmmc_write_sectors(&(self->card), bufinfo.buf, mp_obj_get_int(block_num), bufinfo.len / _SECTOR_SIZE(self));
 
-    return mp_obj_new_bool(err == ESP_OK);
+    int ret = err == ESP_OK ? 0 : -MP_EIO;
+    return MP_OBJ_NEW_SMALL_INT(ret);
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(machine_sdcard_writeblocks_obj, machine_sdcard_writeblocks);
 
@@ -582,4 +603,4 @@ MP_DEFINE_CONST_OBJ_TYPE(
     locals_dict, &machine_sdcard_locals_dict
     );
 
-#endif // MICROPY_HW_ENABLE_SDCARD
+#endif // MICROPY_PY_MACHINE_SDCARD

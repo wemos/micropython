@@ -87,10 +87,15 @@
 
 // Memory allocation policies
 #if MICROPY_HW_ENABLE_PSRAM
+#ifdef MICROPY_GC_STACK_ENTRY_TYPE
+#error MICROPY_GC_STACK_ENTRY_TYPE can not be configured when MICROPY_HW_ENABLE_PSRAM is set.
+#endif
 #define MICROPY_GC_STACK_ENTRY_TYPE             uint32_t
 #define MICROPY_ALLOC_GC_STACK_SIZE             (1024) // Avoid slowdown when GC stack overflow causes a full sweep of PSRAM-backed heap
 #else
+#ifndef MICROPY_GC_STACK_ENTRY_TYPE
 #define MICROPY_GC_STACK_ENTRY_TYPE             uint16_t
+#endif
 #endif
 #ifndef MICROPY_GC_SPLIT_HEAP
 #define MICROPY_GC_SPLIT_HEAP                   MICROPY_HW_ENABLE_PSRAM // whether PSRAM is added to or replaces the heap
@@ -120,7 +125,9 @@
 #define MICROPY_STACK_CHECK_MARGIN              (256)
 #define MICROPY_ENABLE_EMERGENCY_EXCEPTION_BUF  (1)
 #define MICROPY_LONGINT_IMPL                    (MICROPY_LONGINT_IMPL_MPZ)
+#ifndef MICROPY_FLOAT_IMPL
 #define MICROPY_FLOAT_IMPL                      (MICROPY_FLOAT_IMPL_FLOAT)
+#endif
 #define MICROPY_SCHEDULER_DEPTH                 (8)
 #define MICROPY_SCHEDULER_STATIC_NODES          (1)
 #ifndef MICROPY_USE_INTERNAL_ERRNO
@@ -168,22 +175,30 @@
 #define MICROPY_PY_MACHINE_PULSE                (1)
 #define MICROPY_PY_MACHINE_PWM                  (1)
 #define MICROPY_PY_MACHINE_PWM_INCLUDEFILE      "ports/rp2/machine_pwm.c"
+#ifndef MICROPY_PY_MACHINE_I2C
 #define MICROPY_PY_MACHINE_I2C                  (1)
+#endif
 #ifndef MICROPY_PY_MACHINE_I2C_TARGET
 #define MICROPY_PY_MACHINE_I2C_TARGET           (1)
 #define MICROPY_PY_MACHINE_I2C_TARGET_INCLUDEFILE "ports/rp2/machine_i2c_target.c"
 #define MICROPY_PY_MACHINE_I2C_TARGET_MAX       (2)
 #define MICROPY_PY_MACHINE_I2C_TARGET_HARD_IRQ  (1)
 #endif
+#ifndef MICROPY_PY_MACHINE_SOFTI2C
 #define MICROPY_PY_MACHINE_SOFTI2C              (1)
+#endif
+#ifndef MICROPY_PY_MACHINE_I2S
 #define MICROPY_PY_MACHINE_I2S                  (1)
+#endif
 #define MICROPY_PY_MACHINE_I2S_INCLUDEFILE      "ports/rp2/machine_i2s.c"
 #define MICROPY_PY_MACHINE_I2S_CONSTANT_RX      (RX)
 #define MICROPY_PY_MACHINE_I2S_CONSTANT_TX      (TX)
 #define MICROPY_PY_MACHINE_I2S_RING_BUF         (1)
+#ifndef MICROPY_PY_MACHINE_SPI
 #define MICROPY_PY_MACHINE_SPI                  (1)
 #define MICROPY_PY_MACHINE_SPI_MSB              (SPI_MSB_FIRST)
 #define MICROPY_PY_MACHINE_SPI_LSB              (SPI_LSB_FIRST)
+#endif
 #define MICROPY_PY_MACHINE_SOFTSPI              (1)
 #define MICROPY_PY_MACHINE_UART                 (1)
 #define MICROPY_PY_MACHINE_UART_INCLUDEFILE     "ports/rp2/machine_uart.c"
@@ -191,6 +206,10 @@
 #define MICROPY_PY_MACHINE_UART_IRQ             (1)
 #define MICROPY_PY_MACHINE_WDT                  (1)
 #define MICROPY_PY_MACHINE_WDT_INCLUDEFILE      "ports/rp2/machine_wdt.c"
+#ifndef MICROPY_PY_MACHINE_MEM_BACKUP
+#define MICROPY_PY_MACHINE_MEM_BACKUP           (1)
+#endif
+#define MICROPY_PY_MACHINE_MEM_BACKUP_INCLUDEFILE "ports/rp2/machine_mem_backup.c"
 #define MICROPY_PY_MACHINE_FREQ_NUM_ARGS_MAX    (2)
 #define MICROPY_PY_ONEWIRE                      (1)
 #define MICROPY_VFS                             (1)
@@ -198,7 +217,6 @@
 #define MICROPY_VFS_FAT                         (1)
 #define MICROPY_VFS_ROM                         (MICROPY_HW_ROMFS_BYTES > 0)
 #define MICROPY_SSL_MBEDTLS                     (1)
-#define MICROPY_PY_LWIP_PPP                     (MICROPY_PY_NETWORK_PPP_LWIP)
 
 // Hardware timer alarm index. Available range 0-3.
 // Number 3 is currently used by pico-sdk alarm pool (PICO_TIME_DEFAULT_ALARM_POOL_HARDWARE_ALARM_NUM)
@@ -241,7 +259,7 @@
 #endif
 
 #ifndef MICROPY_PY_NETWORK_PPP_LWIP
-#define MICROPY_PY_NETWORK_PPP_LWIP     (0)
+#define MICROPY_PY_NETWORK_PPP_LWIP     (MICROPY_PY_LWIP)
 #endif
 #endif
 

@@ -45,14 +45,25 @@ if(MICROPY_BOARD_VARIANT)
     endif()
 endif()
 
+# Save the cmake-command-line MICROPY_FROZEN_MANIFEST before board config
+# inclusion may overwrite it; resolved back after, so command-line takes
+# precedence over the board's default.
 set(MICROPY_USER_FROZEN_MANIFEST ${MICROPY_FROZEN_MANIFEST})
 
-# Include board config, it may override MICROPY_FROZEN_MANIFEST
+# Include board config, it may set MICROPY_FROZEN_MANIFEST
 include(${MICROPY_BOARD_DIR}/mpconfigboard.cmake)
 if(NOT MICROPY_BOARD_VARIANT)
     include(${MICROPY_BOARD_DIR}/mpconfigvariant.cmake OPTIONAL)
 else()
     include(${MICROPY_BOARD_DIR}/mpconfigvariant_${MICROPY_BOARD_VARIANT}.cmake)
+endif()
+
+# Resolve the frozen manifest now so it's available before py/manifest.cmake
+# runs (via py/usermod.cmake below).
+if(MICROPY_USER_FROZEN_MANIFEST)
+    set(MICROPY_FROZEN_MANIFEST ${MICROPY_USER_FROZEN_MANIFEST})
+elseif(NOT MICROPY_FROZEN_MANIFEST)
+    set(MICROPY_FROZEN_MANIFEST ${MICROPY_PORT_DIR}/boards/manifest.py)
 endif()
 
 # Set the PICO_BOARD if it's not already set (allow a board to override it).
@@ -170,7 +181,6 @@ set(MICROPY_SOURCE_PORT
     pendsv.c
     rp2_flash.c
     rp2_pio.c
-    rp2_psram.c
     rp2_dma.c
     uart.c
     usbd.c
@@ -256,6 +266,11 @@ elseif(PICO_RISCV)
     list(APPEND PICO_SDK_COMPONENTS
         hardware_hazard3
         hardware_riscv
+    )
+endif()
+if(PICO_RP2350)
+    list(APPEND PICO_SDK_COMPONENTS
+        hardware_powman
     )
 endif()
 
@@ -356,7 +371,7 @@ if (MICROPY_BLUETOOTH_BTSTACK)
 
     target_compile_definitions(${MICROPY_TARGET} PRIVATE
         MICROPY_BLUETOOTH_BTSTACK=1
-        MICROPY_BLUETOOTH_BTSTACK_CONFIG_FILE=\"btstack_inc/btstack_config.h\"
+        "MICROPY_BLUETOOTH_BTSTACK_CONFIG_FILE=\"btstack_inc/btstack_config.h\""
     )
 
     # For modbluetooth_btstack.c includes
@@ -500,13 +515,6 @@ else()
     set(MICROPY_CROSS_FLAGS "-march=armv6m")
 endif()
 
-# Set the frozen manifest file
-if (MICROPY_USER_FROZEN_MANIFEST)
-    set(MICROPY_FROZEN_MANIFEST ${MICROPY_USER_FROZEN_MANIFEST})
-elseif (NOT MICROPY_FROZEN_MANIFEST)
-    set(MICROPY_FROZEN_MANIFEST ${MICROPY_PORT_DIR}/boards/manifest.py)
-endif()
-
 target_sources(${MICROPY_TARGET} PRIVATE
     ${MICROPY_SOURCE_PY}
     ${MICROPY_SOURCE_EXTMOD}
@@ -532,12 +540,17 @@ target_compile_options(${MICROPY_TARGET} PRIVATE
     -Wall
     -Werror
     -g  # always include debug information in the ELF
+
+    # Let the compiler lower sqrt()/sqrtf() to the hardware VSQRT instruction
+    # instead of a library call.  MicroPython's math module detects domain
+    # errors via isnan/isinf on the result, not errno, so this is safe.
+    -fno-math-errno
 )
 
 target_link_options(${MICROPY_TARGET} PRIVATE
     -Wl,--defsym=__micropy_c_heap_size__=${MICROPY_C_HEAP_SIZE}
-    -Wl,--wrap=runtime_init_clocks
     -Wl,--print-memory-usage
+    -Wl,--cref
 )
 
 if(DEFINED PICO_FLASH_SIZE_BYTES)
@@ -568,6 +581,54 @@ if(DEFINED MICROPY_HW_FLASH_STORAGE_BYTES)
     )
 endif()
 
+# MICROPY_HW_ROMFS_BYTES optionally reserves a read-only ROMFS partition just
+# below the filesystem. Expose it to the linker (so the FLASH application region
+# excludes it and the linker errors if the firmware overlaps it) and as a
+# compile definition (so rp2_flash.c places ROMFS at the matching address).
+# CMake is the single source of truth for the size, keeping both consistent.
+if(NOT DEFINED MICROPY_HW_ROMFS_BYTES)
+    set(MICROPY_HW_ROMFS_BYTES 0)
+endif()
+target_link_options(${MICROPY_TARGET} PRIVATE
+    -Wl,--defsym=__micropy_romfs_bytes__=${MICROPY_HW_ROMFS_BYTES}
+)
+target_compile_definitions(${MICROPY_TARGET} PRIVATE
+    MICROPY_HW_ROMFS_BYTES=${MICROPY_HW_ROMFS_BYTES}
+)
+
+# PSRAM (RP2350 only) is brought up by the SDK's hardware_psram library at boot
+# (runtime_init). Boards that fit PSRAM set MICROPY_HW_ENABLE_PSRAM and
+# MICROPY_HW_PSRAM_CS_PIN in their mpconfigboard.cmake.
+#
+# Defer to the pico-sdk board header where it configures PSRAM: if it sets a size
+# (PICO_PSRAM_SIZE_BYTES, which the SDK exposes as a CMake variable), use the
+# header's chip-select and size as-is. main.c asserts the header chip-select
+# matches MICROPY_HW_PSRAM_CS_PIN. Otherwise drive the SDK from the downstream
+# config: auto-detect the size on the configured chip-select.
+#
+# MicroPython re-tunes the QMI timing after clock changes (see main.c and
+# modmachine.c); flash programming restores it via the SDK's CS1 setup callback.
+if(PICO_RP2350 AND MICROPY_HW_ENABLE_PSRAM)
+    list(APPEND PICO_SDK_COMPONENTS
+        hardware_psram
+    )
+    target_compile_definitions(${MICROPY_TARGET} PRIVATE
+        MICROPY_HW_ENABLE_PSRAM=1
+    )
+    if(DEFINED MICROPY_HW_PSRAM_CS_PIN)
+        target_compile_definitions(${MICROPY_TARGET} PRIVATE
+            MICROPY_HW_PSRAM_CS_PIN=${MICROPY_HW_PSRAM_CS_PIN}
+        )
+    endif()
+    if(NOT PICO_PSRAM_SIZE_BYTES)
+        # No size configured upstream: auto-detect on the configured chip-select.
+        target_compile_definitions(${MICROPY_TARGET} PRIVATE
+            PICO_PSRAM_CS_PIN=${MICROPY_HW_PSRAM_CS_PIN}
+            PICO_AUTO_DETECT_PSRAM_SIZE=1
+        )
+    endif()
+endif()
+
 # Apply optimisations to performance-critical source code.
 set_source_files_properties(
     ${MICROPY_PY_DIR}/map.c
@@ -593,7 +654,7 @@ set_source_files_properties(
 
 target_compile_definitions(${MICROPY_TARGET} PRIVATE
     ${MICROPY_DEF_BOARD}
-    FFCONF_H=\"${MICROPY_OOFATFS_DIR}/ffconf.h\"
+    "FFCONF_H=\"${MICROPY_OOFATFS_DIR}/ffconf.h\""
     LFS1_NO_MALLOC LFS1_NO_DEBUG LFS1_NO_WARN LFS1_NO_ERROR LFS1_NO_ASSERT
     LFS2_NO_MALLOC LFS2_NO_DEBUG LFS2_NO_WARN LFS2_NO_ERROR LFS2_NO_ASSERT
     PICO_FLOAT_PROPAGATE_NANS=1
@@ -631,11 +692,15 @@ endif()
 #  a linker script modification) until we explicitly add  macro calls around the function
 #  defs to move them into RAM.
 if (NOT MICROPY_BOARD_LINKER_SCRIPT)
+    # Use the Pico SDK's include-based ("overridable") default linker script,
+    # supplying only the parts MicroPython needs to change via override paths.
     if(PICO_RP2040)
-        set(MICROPY_BOARD_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_mp_rp2040.ld)
+        pico_add_linker_script_override_path(${MICROPY_TARGET} ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2040)
     elseif(PICO_RP2350)
-        set(MICROPY_BOARD_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_mp_rp2350.ld)
+        pico_add_linker_script_override_path(${MICROPY_TARGET} ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2350)
     endif()
+    pico_add_linker_script_override_path(${MICROPY_TARGET} ${CMAKE_CURRENT_LIST_DIR}/memmap_rp2)
+    set(MICROPY_BOARD_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_mp_rp2.ld)
 endif()
 
 if (PICO_ON_DEVICE AND NOT PICO_NO_FLASH AND NOT PICO_COPY_TO_RAM)

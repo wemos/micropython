@@ -52,7 +52,7 @@ endif
 IDFPY_FLAGS += -D MICROPY_BOARD=$(BOARD) -D MICROPY_BOARD_DIR="$(abspath $(BOARD_DIR))" $(CMAKE_ARGS)
 
 ifdef FROZEN_MANIFEST
-       IDFPY_FLAGS += -D MICROPY_FROZEN_MANIFEST=$(FROZEN_MANIFEST)
+       IDFPY_FLAGS += -D MICROPY_FROZEN_MANIFEST="$(FROZEN_MANIFEST)"
 endif
 
 ifdef BOARD_VARIANT
@@ -105,6 +105,9 @@ size-components:
 
 size-files:
 	$(call RUN_IDF_PY,size-files)
+
+qemu:
+	$(call RUN_IDF_PY,qemu monitor)
 
 # Run idf.py with the UPDATE_SUBMODULES flag to update
 # necessary submodules for this board.

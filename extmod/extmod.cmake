@@ -53,6 +53,7 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/network_lwip.c
     ${MICROPY_EXTMOD_DIR}/network_ninaw10.c
     ${MICROPY_EXTMOD_DIR}/network_ppp_lwip.c
+    ${MICROPY_EXTMOD_DIR}/network_usbd_ncm.c
     ${MICROPY_EXTMOD_DIR}/network_wiznet5k.c
     ${MICROPY_EXTMOD_DIR}/os_dupterm.c
     ${MICROPY_EXTMOD_DIR}/vfs.c
@@ -143,6 +144,12 @@ if(MICROPY_PY_BTREE)
 
     target_compile_definitions(micropy_extmod_btree PRIVATE
         BERKELEY_DB_CONFIG_FILE="${BERKELEY_DB_CONFIG_FILE}"
+    )
+
+    # We need to suppress certain warnings to get berkeley-db to compile cleanly.
+    # Should be kept in sync with extmod.mk.
+    target_compile_options(micropy_extmod_btree PRIVATE
+        -Wno-old-style-definition -Wno-sign-compare -Wno-unused-parameter -Wno-deprecated-non-prototype -Wno-unknown-warning-option
     )
 
     # The include directories and compile definitions below are needed to build

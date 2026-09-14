@@ -222,15 +222,17 @@ void mp_hal_get_mac_ascii(int idx, size_t chr_off, size_t chr_len, char *dest) {
     }
 }
 
+#if MICROPY_HW_ENABLE_RNG
 void mp_hal_get_random(size_t n, uint8_t *buf) {
     uint32_t val = 0;
     for (int i = 0; i < n; i++) {
         if ((i & 3) == 0) {
-            val = rng_get();
+            val = mp_hal_get_hw_random_u32();
         }
         buf[i] = val;
         val >>= 8;
     }
 }
+#endif
 
 MP_REGISTER_ROOT_POINTER(struct _machine_uart_obj_t *pyb_stdio_uart);
