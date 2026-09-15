@@ -2,5 +2,6 @@
     "files.associations": {
         "runtime.h": "c",
         "mphal.h": "c"
-    }
+    },
+    "idf.currentSetup": "/home/wemos/.espressif/v5.5.5/esp-idf"
 }
