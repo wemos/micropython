@@ -100,6 +100,8 @@ static mp_obj_t mp_machine_get_freq(void) {
     return MP_OBJ_NEW_SMALL_INT(mp_hal_get_cpu_freq());
 }
 
+static mp_obj_t frequency_overrides[2] = {};
+
 static void mp_machine_set_freq(size_t n_args, const mp_obj_t *args) {
     mp_int_t freq = mp_obj_get_int(args[0]);
 
@@ -141,6 +143,10 @@ static void mp_machine_set_freq(size_t n_args, const mp_obj_t *args) {
         psram_reinitialize();
     }
     #endif
+
+    if (n_args > 0) {
+        memcpy(frequency_overrides, args, MIN(n_args, 2) * sizeof(mp_obj_t));
+    }
 }
 
 static void mp_machine_idle(void) {
@@ -257,16 +263,17 @@ static void mp_machine_lightsleep(size_t n_args, const mp_obj_t *args) {
         uint32_t save_sleep_en1 = clocks_hw->sleep_en1;
         if (use_timer_alarm) {
             // Use timer alarm to wake.
-            clocks_hw->sleep_en0 = 0x0;
             #if PICO_RP2040
+            clocks_hw->sleep_en0 = CLOCKS_SLEEP_EN0_CLK_RTC_RTC_BITS;
             clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_SYS_TIMER_BITS;
             #elif PICO_RP2350
+            clocks_hw->sleep_en0 = CLOCKS_SLEEP_EN0_CLK_REF_POWMAN_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_POWMAN_BITS;
+            uint32_t sleep_en1 = CLOCKS_SLEEP_EN1_CLK_REF_TICKS_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_TIMER0_BITS;
             if (watchdog_active) {
                 // clk_sys watchdog and clk_ref ticks must be enabled for the watchdog counter to decrement on RP2350.
-                clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_REF_TICKS_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_TIMER0_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_WATCHDOG_BITS;
-            } else {
-                clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_REF_TICKS_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_TIMER0_BITS;
+                sleep_en1 |= CLOCKS_SLEEP_EN1_CLK_SYS_WATCHDOG_BITS;
             }
+            clocks_hw->sleep_en1 = sleep_en1;
             #else
             #error Unknown processor
             #endif
@@ -363,6 +370,10 @@ static void mp_machine_lightsleep(size_t n_args, const mp_obj_t *args) {
     // (higher up, inside the critical section)
     in_lightsleep = false;
     #endif
+
+    if (frequency_overrides[0] != MP_OBJ_NULL) {
+        mp_machine_set_freq(1 + (frequency_overrides[1] != NULL ? 1 : 0), frequency_overrides);
+    }
 }
 
 MP_NORETURN static void mp_machine_deepsleep(size_t n_args, const mp_obj_t *args) {
